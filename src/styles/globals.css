@@ -1,0 +1,4 @@
+html,body,#__next { height: 100%; }
+body { font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial; margin: 0; }
+button { padding: 8px 12px; border-radius: 6px; border: 1px solid #ccc; background: #fff; cursor: pointer }
+input { padding: 8px; border: 1px solid #ccc; border-radius: 6px }
