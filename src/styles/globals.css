@@ -1,4 +1,188 @@
-html,body,#__next { height: 100%; }
-body { font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial; margin: 0; }
-button { padding: 8px 12px; border-radius: 6px; border: 1px solid #ccc; background: #fff; cursor: pointer }
-input { padding: 8px; border: 1px solid #ccc; border-radius: 6px }
+html,
+body {
+  padding: 0;
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Oxygen,
+    Ubuntu, Cantarell, Fira Sans, Droid Sans, Helvetica Neue, sans-serif;
+  height: 100%;
+  width: 100%;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+/* Home Container Layout */
+.home-container {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
+  position: relative;
+}
+
+.map-section {
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  z-index: 1;
+}
+
+.map-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  background: #f0f0f0;
+  color: #666;
+}
+
+/* Orders Panel (Bottom Sheet style for mobile, Side panel for desktop) */
+.orders-panel {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: white;
+  z-index: 1000;
+  border-top-left-radius: 20px;
+  border-top-right-radius: 20px;
+  box-shadow: 0 -4px 20px rgba(0,0,0,0.15);
+  max-height: 60vh;
+  display: flex;
+  flex-direction: column;
+  transition: transform 0.3s ease;
+}
+
+@media (min-width: 768px) {
+  .orders-panel {
+    top: 20px;
+    left: 20px;
+    bottom: 20px;
+    right: auto;
+    width: 400px;
+    max-height: none;
+    border-radius: 12px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+  }
+}
+
+.panel-header {
+  padding: 20px;
+  border-bottom: 1px solid #eee;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: white;
+  border-radius: inherit;
+}
+
+.panel-header h2 {
+  margin: 0;
+  font-size: 1.2rem;
+  color: #333;
+}
+
+.dashboard-link {
+  color: #0070f3;
+  text-decoration: none;
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+.orders-list {
+  padding: 20px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.no-orders {
+  text-align: center;
+  padding: 40px 20px;
+  color: #888;
+}
+
+/* Order Card Styles */
+.order-card {
+  background: white;
+  border: 1px solid #eee;
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 16px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.order-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+
+.order-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.order-header h3 {
+  margin: 0;
+  font-size: 1.1rem;
+  color: #1a1a1a;
+}
+
+.order-price {
+  font-weight: 700;
+  color: #00c853;
+  font-size: 1.1rem;
+}
+
+.order-details {
+  margin-bottom: 16px;
+}
+
+.order-address {
+  margin: 0 0 8px 0;
+  color: #555;
+  font-size: 0.95rem;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.order-items {
+  margin: 0;
+  color: #888;
+  font-size: 0.9rem;
+}
+
+.accept-btn {
+  width: 100%;
+  padding: 12px;
+  background: #0070f3;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.accept-btn:hover {
+  background: #0051a2;
+}
+
+.loading-screen, .error-screen {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  font-size: 1.2rem;
+  color: #666;
+}
+
+.error-screen {
+  color: #d32f2f;
+}

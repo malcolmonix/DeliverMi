@@ -1,12 +1,6 @@
 {
-  "lib/firebase.js -> firebase/messaging": {
-    "id": "lib/firebase.js -> firebase/messaging",
-    "files": [
-      "static/chunks/node_modules_firebase_messaging_dist_esm_index_esm_js.js"
-    ]
-  },
-  "pages/login.js -> firebase/messaging": {
-    "id": "pages/login.js -> firebase/messaging",
+  "lib\\firebase.js -> firebase/messaging": {
+    "id": "lib\\firebase.js -> firebase/messaging",
     "files": [
       "static/chunks/node_modules_firebase_messaging_dist_esm_index_esm_js.js"
     ]

@@ -4,6 +4,7 @@ import { getAuth } from 'firebase/auth';
 import { useRouter } from 'next/router';
 import { db } from '../lib/firebase';
 import { doc, getDoc } from 'firebase/firestore';
+import ActiveDelivery from '../components/ActiveDelivery';
 
 const AVAILABLE_ORDERS = gql`
   query AvailableOrders {
@@ -45,11 +46,18 @@ export default function Dashboard() {
   const [assignRider] = useMutation(ASSIGN_RIDER);
   const [updateByRider] = useMutation(UPDATE_BY_RIDER);
   const [selected, setSelected] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
   const router = useRouter();
 
   useEffect(() => {
     const auth = getAuth();
-    if (!auth.currentUser) router.replace('/login');
+    const unsubscribe = auth.onAuthStateChanged((user) => {
+      setAuthLoading(false);
+      if (!user) {
+        router.replace('/login');
+      }
+    });
+    return () => unsubscribe();
   }, [router]);
 
   // load rider profile from Firestore
@@ -70,13 +78,17 @@ export default function Dashboard() {
     load();
   }, []);
 
-  if (loading) return <div style={{ padding: 24 }}>Loading...</div>;
+  if (authLoading || loading) return <div style={{ padding: 24 }}>Loading...</div>;
 
   const orders = data?.availableOrders || [];
 
+  // Find active order (assigned to this rider)
+  const auth = getAuth();
+  const activeOrder = orders.find(o => o.riderId === auth.currentUser?.uid && ['ASSIGNED', 'PICKED_UP', 'OUT_FOR_DELIVERY'].includes(o.orderStatus));
+
   return (
     <div style={{ padding: 24 }}>
-      <h2>Available Deliveries</h2>
+      <h2>Rider Dashboard</h2>
 
       {riderProfile && (
         <div style={{ marginBottom: 16, padding: 12, border: '1px solid #eee', borderRadius: 8 }}>
@@ -84,6 +96,11 @@ export default function Dashboard() {
           <div>Available: {riderProfile.available ? 'Yes' : 'No'}</div>
         </div>
       )}
+
+      {/* Active Delivery Banner */}
+      {activeOrder && <ActiveDelivery order={activeOrder} />}
+
+      <h3>Available Deliveries</h3>
       <div style={{ display: 'grid', gap: 12 }}>
         {orders.map(o => (
           <div key={o.id} style={{ border: '1px solid #ddd', padding: 12 }}>
