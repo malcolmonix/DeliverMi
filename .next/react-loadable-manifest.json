@@ -4,5 +4,11 @@
     "files": [
       "static/chunks/node_modules_firebase_messaging_dist_esm_index_esm_js.js"
     ]
+  },
+  "pages\\dashboard.js -> ../components/Map": {
+    "id": "pages\\dashboard.js -> ../components/Map",
+    "files": [
+      "static/chunks/src_components_Map_js.js"
+    ]
   }
 }

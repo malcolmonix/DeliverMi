@@ -2,9 +2,15 @@ import { useEffect, useState } from 'react';
 import { useQuery, useMutation, gql } from '@apollo/client';
 import { getAuth } from 'firebase/auth';
 import { useRouter } from 'next/router';
-import { db } from '../lib/firebase';
-import { doc, getDoc } from 'firebase/firestore';
-import ActiveDelivery from '../components/ActiveDelivery';
+import Link from 'next/link';
+import dynamic from 'next/dynamic';
+import StatusToggle from '../components/StatusToggle';
+import NavigationButtons from '../components/NavigationButtons';
+import BottomSheet from '../components/BottomSheet';
+import styles from '../styles/Dashboard.module.css';
+
+// Dynamically import Map to avoid SSR issues with Leaflet
+const Map = dynamic(() => import('../components/Map'), { ssr: false });
 
 const AVAILABLE_ORDERS = gql`
   query AvailableOrders {
@@ -12,9 +18,10 @@ const AVAILABLE_ORDERS = gql`
       id
       orderId
       restaurant
-      orderItems { title quantity }
+      orderItems { title quantity price }
       address
       orderStatus
+      paidAmount
     }
   }
 `;
@@ -31,21 +38,9 @@ const ASSIGN_RIDER = gql`
   }
 `;
 
-const UPDATE_BY_RIDER = gql`
-  mutation RiderUpdate($orderId: ID!, $status: String!, $code: String) {
-    riderUpdateOrderStatus(orderId: $orderId, status: $status, code: $code) {
-      id
-      orderStatus
-      paymentProcessed
-    }
-  }
-`;
-
 export default function Dashboard() {
   const { data, loading, refetch } = useQuery(AVAILABLE_ORDERS, { pollInterval: 5000 });
-  const [assignRider] = useMutation(ASSIGN_RIDER);
-  const [updateByRider] = useMutation(UPDATE_BY_RIDER);
-  const [selected, setSelected] = useState(null);
+  const [assignRider, { loading: assigning }] = useMutation(ASSIGN_RIDER);
   const [authLoading, setAuthLoading] = useState(true);
   const router = useRouter();
 
@@ -60,72 +55,172 @@ export default function Dashboard() {
     return () => unsubscribe();
   }, [router]);
 
-  // load rider profile from Firestore
-  const [riderProfile, setRiderProfile] = useState(null);
-  useEffect(() => {
-    const a = getAuth();
-    const load = async () => {
-      const u = a.currentUser;
-      if (!u) return;
-      try {
-        const ref = doc(db, 'riders', u.uid);
-        const snap = await getDoc(ref);
-        if (snap.exists()) setRiderProfile(snap.data());
-      } catch (err) {
-        console.warn('Failed to load rider profile', err.message || err);
-      }
-    };
-    load();
-  }, []);
+  if (authLoading || loading) {
+    return <div className={styles.loadingContainer}>Loading...</div>;
+  }
 
-  if (authLoading || loading) return <div style={{ padding: 24 }}>Loading...</div>;
-
+  const auth = getAuth();
   const orders = data?.availableOrders || [];
 
-  // Find active order (assigned to this rider)
-  const auth = getAuth();
-  const activeOrder = orders.find(o => o.riderId === auth.currentUser?.uid && ['ASSIGNED', 'PICKED_UP', 'OUT_FOR_DELIVERY'].includes(o.orderStatus));
+  const handleAcceptOrder = async (orderId) => {
+    try {
+      await assignRider({ variables: { orderId } });
+      refetch();
+      alert('Order accepted! Check your assigned orders.');
+    } catch (error) {
+      alert('Failed to accept order: ' + error.message);
+    }
+  };
 
   return (
-    <div style={{ padding: 24 }}>
-      <h2>Rider Dashboard</h2>
-
-      {riderProfile && (
-        <div style={{ marginBottom: 16, padding: 12, border: '1px solid #eee', borderRadius: 8 }}>
-          <strong>Rider:</strong> {riderProfile.name} ({riderProfile.email})
-          <div>Available: {riderProfile.available ? 'Yes' : 'No'}</div>
-        </div>
-      )}
-
-      {/* Active Delivery Banner */}
-      {activeOrder && <ActiveDelivery order={activeOrder} />}
-
-      <h3>Available Deliveries</h3>
-      <div style={{ display: 'grid', gap: 12 }}>
-        {orders.map(o => (
-          <div key={o.id} style={{ border: '1px solid #ddd', padding: 12 }}>
-            <strong>{o.restaurant}</strong>
-            <div>Items: {o.orderItems.map(i => `${i.title} x${i.quantity}`).join(', ')}</div>
-            <div>Address: {o.address}</div>
-            <div>Status: {o.orderStatus}</div>
-            <div style={{ marginTop: 8 }}>
-              <button onClick={async () => { const res = await assignRider({ variables: { orderId: o.id } }); setSelected(res.data.assignRider); refetch(); }}>Accept</button>
-            </div>
-          </div>
-        ))}
+    <div className={styles.container}>
+      {/* Header */}
+      <div className={styles.header}>
+        <h1 className={styles.title}>DeliverMi Dashboard</h1>
+        <StatusToggle />
       </div>
 
-      {selected && (
-        <div style={{ marginTop: 24 }}>
-          <h3>Assigned Order</h3>
-          <div>Order: {selected.orderId}</div>
-          <div>Pickup Code: {selected.pickupCode}</div>
-          <div style={{ marginTop: 8 }}>
-            <button onClick={async () => { await updateByRider({ variables: { orderId: selected.id, status: 'PICKED_UP' } }); alert('Marked picked up'); }}>Mark Picked Up</button>
-            <button onClick={async () => { const code = prompt('Enter delivery code from customer'); try { await updateByRider({ variables: { orderId: selected.id, status: 'DELIVERED', code } }); alert('Delivered and payment processed'); setSelected(null); refetch(); } catch (e) { alert(e.message); } }} style={{ marginLeft: 8 }}>Mark Delivered</button>
-          </div>
+      {/* Navigation Links */}
+      <div className={styles.navLinks}>
+        <Link href="/earnings" className={styles.navLink}>
+          💰 Earnings
+        </Link>
+        <Link href="/history" className={styles.navLink}>
+          📜 History
+        </Link>
+      </div>
+
+      {/* Main Content: Two-Column Layout */}
+      <div className={styles.mainGrid}>
+        {/* Left Sidebar: Available Orders */}
+        <div className={styles.sidebar}>
+          <h2 className={styles.sectionTitle}>
+            Available Orders ({orders.length})
+          </h2>
+
+          {orders.length === 0 ? (
+            <div className={styles.emptyState}>
+              <h3>No orders available right now</h3>
+              <p>Check back soon for new delivery opportunities!</p>
+            </div>
+          ) : (
+            orders.map((order) => {
+              const itemCount = order.orderItems?.reduce((sum, item) => sum + item.quantity, 0) || 0;
+
+              return (
+                <div key={order.id} className={styles.orderCard}>
+                  <div className={styles.orderHeader}>
+                    <h3 className={styles.restaurantName}>{order.restaurant}</h3>
+                    <span className={styles.orderStatus}>{order.orderStatus}</span>
+                  </div>
+
+                  <div className={styles.orderDetails}>
+                    <div className={styles.detailRow}>
+                      <span className={styles.detailIcon}>🛍️</span>
+                      <span>{itemCount} item{itemCount !== 1 ? 's' : ''}</span>
+                    </div>
+                    <div className={styles.detailRow}>
+                      <span className={styles.detailIcon}>📍</span>
+                      <span>{order.address || 'Address not available'}</span>
+                    </div>
+                    <div className={styles.detailRow}>
+                      <span className={styles.detailIcon}>💵</span>
+                      <span>${(order.paidAmount || 0).toFixed(2)}</span>
+                    </div>
+                  </div>
+
+                  <div className={styles.orderActions}>
+                    <button
+                      className={styles.acceptButton}
+                      onClick={() => handleAcceptOrder(order.id)}
+                      disabled={assigning}
+                    >
+                      {assigning ? 'Accepting...' : 'Accept Order'}
+                    </button>
+                  </div>
+
+                  {/* Navigation Buttons - shown after clicking (or can be always shown) */}
+                  {/* For now, displaying for all orders - would typically show only after accepting */}
+                  <NavigationButtons
+                    destination={{
+                      lat: 40.7128, // Placeholder - would come from geocoded address
+                      lon: -74.0060,
+                      address: order.address
+                    }}
+                  />
+                </div>
+              );
+            })
+          )}
         </div>
-      )}
+
+        {/* Right Side: Map */}
+        <div className={styles.mapContainer}>
+          <Map orders={orders} />
+        </div>
+      </div>
+
+      {/* Bottom Sheet for Mobile */}
+      <BottomSheet>
+        <h2 className={styles.sectionTitle}>
+          Available Orders ({orders.length})
+        </h2>
+
+        {orders.length === 0 ? (
+          <div className={styles.emptyState}>
+            <h3>No orders available right now</h3>
+            <p>Check back soon for new delivery opportunities!</p>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            {orders.map((order) => {
+              const itemCount = order.orderItems?.reduce((sum, item) => sum + item.quantity, 0) || 0;
+
+              return (
+                <div key={order.id} className={styles.orderCard}>
+                  <div className={styles.orderHeader}>
+                    <h3 className={styles.restaurantName}>{order.restaurant}</h3>
+                    <span className={styles.orderStatus}>{order.orderStatus}</span>
+                  </div>
+
+                  <div className={styles.orderDetails}>
+                    <div className={styles.detailRow}>
+                      <span className={styles.detailIcon}>🛍️</span>
+                      <span>{itemCount} item{itemCount !== 1 ? 's' : ''}</span>
+                    </div>
+                    <div className={styles.detailRow}>
+                      <span className={styles.detailIcon}>📍</span>
+                      <span>{order.address || 'Address not available'}</span>
+                    </div>
+                    <div className={styles.detailRow}>
+                      <span className={styles.detailIcon}>💵</span>
+                      <span>${(order.paidAmount || 0).toFixed(2)}</span>
+                    </div>
+                  </div>
+
+                  <div className={styles.orderActions}>
+                    <button
+                      className={styles.acceptButton}
+                      onClick={() => handleAcceptOrder(order.id)}
+                      disabled={assigning}
+                    >
+                      {assigning ? 'Accepting...' : 'Accept Order'}
+                    </button>
+                  </div>
+
+                  <NavigationButtons
+                    destination={{
+                      lat: 40.7128,
+                      lon: -74.0060,
+                      address: order.address
+                    }}
+                  />
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </BottomSheet>
     </div>
   );
 }
