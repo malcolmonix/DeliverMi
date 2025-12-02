@@ -1,24 +1,26 @@
-# DeliverMi - Rider Delivery Application
+# DeliverMi - Consumer Ride Booking Application
 
-Rider application for the Food Delivery multi-vendor platform. DeliverMi enables delivery riders to view available orders, accept deliveries, and complete the pickup/delivery flow with code verification.
+Consumer ride booking application for the Food Delivery & Ride Booking ecosystem. DeliverMi enables customers to book rides (Uber/Bolt style), track riders in real-time, and complete ride journeys with interactive Mapbox maps.
 
 ## Features
 
-### ✅ Phase 1 Complete
-- **Order Management**: View available READY orders from vendors  
-- **Order Details**: Complete order information with pickup codes
-- **Delivery Flow**: Accept → Pickup → Deliver workflow
-- **Code Verification**: Secure delivery completion with customer codes
-- **Real-time Updates**: 5-second polling for status changes
-- **Active Delivery Tracking**: Prominent display of current delivery
-- **Firebase Authentication**: Email/password and Google sign-in
+### ✅ Completed Features
+- **Interactive Map**: Mapbox GL integration with full map controls
+- **Ride Booking**: Request rides with pickup and dropoff location selection
+- **Address Search**: Geocoding and autocomplete for address search
+- **Route Visualization**: Real-time route display between pickup and dropoff
+- **Fare Calculation**: Automatic fare calculation based on distance and duration
+- **Real-time Tracking**: Live rider location updates via Firestore
+- **Status Updates**: Real-time ride status synchronization
+- **Authentication**: Email/password and Google sign-in
+- **Error Handling**: Comprehensive error handling and user feedback
 
-### 🚧 In Development
-- FCM push notifications (configured, needs testing)
-- Map integration (Mapbox/Google Maps planned)
+### 🚧 Planned Features
+- Ride history view
+- Ride rating system
+- Push notifications (FCM configured, needs testing)
 - Earnings tracking
-- Delivery history
-- Rider profile management
+- Multiple payment methods
 
 ## Tech Stack
 
@@ -26,7 +28,8 @@ Rider application for the Food Delivery multi-vendor platform. DeliverMi enables
 - **GraphQL Client**: Apollo Client
 - **Authentication**: Firebase Auth
 - **Real-time**: Firebase Firestore
-- **Styling**: CSS Modules + inline styles
+- **Maps**: Mapbox GL JS (react-map-gl)
+- **Styling**: Tailwind CSS + CSS Modules
 - **State**: React hooks + Apollo cache
 
 ## Setup
@@ -45,7 +48,7 @@ npm install
 
 ### Environment Variables
 
-Create `.env` file:
+Create `.env.local` file (copy from `.env.local.example`):
 
 ```env
 # Firebase Config (must match other apps)
@@ -55,11 +58,13 @@ NEXT_PUBLIC_FIREBASE_PROJECT_ID=your_project_id
 NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=your_project.appspot.com
 NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=your_sender_id
 NEXT_PUBLIC_FIREBASE_APP_ID=your_app_id
-NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=G-XXXXXXXXXX
 NEXT_PUBLIC_FIREBASE_VAPID_KEY=your_vapid_key
 
 # API Endpoint
 NEXT_PUBLIC_GRAPHQL_URI=http://localhost:4000/graphql
+
+# Mapbox Configuration
+NEXT_PUBLIC_MAPBOX_TOKEN=pk.eyJ1IjoibWFsY29sbW9uaXgiLCJhIjoiY21pbmM2dnk3MTcydjNmczVsMnA1N3RlbyJ9.ZcElr4lOdzhEywm-570cCg
 ```
 
 ### Development
@@ -70,36 +75,36 @@ npm run dev
 
 App runs on `http://localhost:9010`
 
-## Order Flow
+## Ride Booking Flow
 
-DeliverMi integrates into the complete ecosystem flow:
+DeliverMi enables customers to book rides independently:
 
 ```
-ChopChop (Customer) → MenuVerse (Vendor) → DeliverMi (Rider)
+DeliverMi (Customer) → API → RiderMi (Rider) → DeliverMi (Tracking)
 ```
 
-1. **ChopChop**: Customer places order (Status: CONFIRMED)
-2. **MenuVerse**: Vendor accepts (PROCESSING), prepares, marks READY
-3. **/notify-ready**: API sends FCM to available riders
-4. **DeliverMi**: Rider sees order, accepts (ASSIGNED), picks up (PICKED_UP), delivers (DELIVERED)
+1. **DeliverMi**: Customer selects pickup and dropoff locations
+2. **API**: Creates ride request (Status: REQUESTED)
+3. **RiderMi**: Rider sees and accepts ride (Status: ACCEPTED)
+4. **Real-time**: Rider location updates every 5 seconds
+5. **DeliverMi**: Customer tracks rider in real-time
+6. **RiderMi**: Rider marks picked up (Status: PICKED_UP)
+7. **RiderMi**: Rider completes ride (Status: COMPLETED)
 
 ## Key Pages
 
-- `/` - Home with map and available orders
-- `/dashboard` - Active delivery + available orders list
-- `/order/[id]` - Order details with pickup code and actions
-- `/login` - Authentication
+- `/` - Home with interactive map and ride booking
+- `/login` - Authentication (Email/Password & Google Sign-In)
 
 ## GraphQL Operations
 
 ### Queries
-- `availableOrders` - Returns ONLY READY status orders (no rider assigned)
-- `riderOrder(id)` - Get specific order details
+- `ride(id)` - Get specific ride details
+- `myRides` - Get current user's ride history
 
 ### Mutations
-- `assignRider(orderId)` - Accept order
-- `riderUpdateOrderStatus(orderId, status, code?)` - Update status (PICKED_UP, DELIVERED)
-- `riderReportNotReady(orderId, waitedMinutes)` - Report delay
+- `requestRide(input)` - Create new ride request
+- `updateRideStatus(rideId, status)` - Update ride status (for cancellation)
 
 ## Testing
 

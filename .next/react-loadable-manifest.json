@@ -1,14 +1,14 @@
 {
+  "..\\node_modules\\react-map-gl\\dist\\esm\\exports-mapbox.js -> mapbox-gl": {
+    "id": "..\\node_modules\\react-map-gl\\dist\\esm\\exports-mapbox.js -> mapbox-gl",
+    "files": [
+      "static/chunks/node_modules_mapbox-gl_dist_mapbox-gl_js.js"
+    ]
+  },
   "lib\\firebase.js -> firebase/messaging": {
     "id": "lib\\firebase.js -> firebase/messaging",
     "files": [
       "static/chunks/node_modules_firebase_messaging_dist_esm_index_esm_js.js"
-    ]
-  },
-  "pages\\dashboard.js -> ../components/Map": {
-    "id": "pages\\dashboard.js -> ../components/Map",
-    "files": [
-      "static/chunks/src_components_Map_js.js"
     ]
   }
 }

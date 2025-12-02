@@ -1,10 +1,12 @@
 import '../styles/globals.css';
+import 'mapbox-gl/dist/mapbox-gl.css';
 import { ApolloProvider } from '@apollo/client/react';
 import { apolloClient } from '../lib/apollo';
 import { useEffect, useState } from 'react';
 import { registerMessagingSW, requestAndGetFcmToken, onMessageHandler } from '../lib/firebase';
 import { auth, db } from '../lib/firebase';
 import { doc, setDoc } from 'firebase/firestore';
+import { ErrorBoundary } from '../components/ErrorBoundary';
 
 export default function App({ Component, pageProps }) {
   useEffect(() => {
@@ -46,18 +48,20 @@ export default function App({ Component, pageProps }) {
   }, []);
 
   return (
-    <ApolloProvider client={apolloClient}>
-      <Component {...pageProps} />
+    <ErrorBoundary>
+      <ApolloProvider client={apolloClient}>
+        <Component {...pageProps} />
 
-      {/* Simple toast container for foreground notifications */}
-      <div style={{ position: 'fixed', top: 16, right: 16, zIndex: 9999, display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {toasts.map(t => (
-          <div key={t.id} onClick={() => { if (t.url) window.open(t.url, '_blank'); }} style={{ cursor: t.url ? 'pointer' : 'default', minWidth: 260, maxWidth: 360, background: 'white', padding: 12, boxShadow: '0 4px 14px rgba(0,0,0,0.12)', borderRadius: 8 }}>
-            <div style={{ fontWeight: 600, marginBottom: 6 }}>{t.title}</div>
-            <div style={{ fontSize: 13, color: '#333' }}>{t.body}</div>
-          </div>
-        ))}
-      </div>
-    </ApolloProvider>
+        {/* Simple toast container for foreground notifications */}
+        <div style={{ position: 'fixed', top: 16, right: 16, zIndex: 9999, display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {toasts.map(t => (
+            <div key={t.id} onClick={() => { if (t.url) window.open(t.url, '_blank'); }} style={{ cursor: t.url ? 'pointer' : 'default', minWidth: 260, maxWidth: 360, background: 'white', padding: 12, boxShadow: '0 4px 14px rgba(0,0,0,0.12)', borderRadius: 8 }}>
+              <div style={{ fontWeight: 600, marginBottom: 6 }}>{t.title}</div>
+              <div style={{ fontSize: 13, color: '#333' }}>{t.body}</div>
+            </div>
+          ))}
+        </div>
+      </ApolloProvider>
+    </ErrorBoundary>
   );
 }

@@ -1,53 +1,76 @@
 import { gql } from '@apollo/client';
 
-// Rider Earnings Query
-export const RIDER_EARNINGS = gql`
-  query RiderEarnings($riderId: ID, $period: String) {
-    riderEarnings(riderId: $riderId, period: $period) {
-      totalEarnings
-      deliveryCount
-      totalTips
-      totalFees
-      period
-    }
-  }
-`;
-
-// Rider Order History Query
-export const RIDER_ORDER_HISTORY = gql`
-  query RiderOrderHistory($riderId: ID, $limit: Int, $offset: Int) {
-    riderOrderHistory(riderId: $riderId, limit: $limit, offset: $offset) {
+// Ride Queries
+export const GET_RIDE_STATUS = gql`
+  query GetRideStatus($id: ID!) {
+    ride(id: $id) {
       id
-      orderId
-      restaurant
-      orderItems {
-        title
-        quantity
-        price
-        total
+      rideId
+      status
+      pickupAddress
+      pickupLat
+      pickupLng
+      dropoffAddress
+      dropoffLat
+      dropoffLng
+      fare
+      distance
+      duration
+      rider {
+        id
+        displayName
+        latitude
+        longitude
+        phoneNumber
       }
-      orderAmount
-      paidAmount
-      deliveryCharges
-      tipping
-      address
-      orderStatus
-      orderDate
       createdAt
       updatedAt
     }
   }
 `;
 
-// Update Rider Status Mutation
-export const UPDATE_RIDER_STATUS = gql`
-  mutation UpdateRiderStatus($isOnline: Boolean!) {
-    updateRiderStatus(isOnline: $isOnline) {
+export const GET_MY_RIDES = gql`
+  query GetMyRides {
+    myRides {
       id
-      uid
-      email
-      displayName
-      isOnline
+      rideId
+      status
+      pickupAddress
+      dropoffAddress
+      fare
+      createdAt
+    }
+  }
+`;
+
+// Ride Mutations
+export const REQUEST_RIDE = gql`
+  mutation RequestRide($input: RideInput!) {
+    requestRide(input: $input) {
+      id
+      rideId
+      status
+      pickupAddress
+      pickupLat
+      pickupLng
+      dropoffAddress
+      dropoffLat
+      dropoffLng
+      fare
+      distance
+      duration
+      createdAt
+    }
+  }
+`;
+
+export const UPDATE_RIDE_STATUS = gql`
+  mutation UpdateRideStatus($rideId: ID!, $status: String!) {
+    updateRideStatus(rideId: $rideId, status: $status) {
+      id
+      rideId
+      status
+      updatedAt
     }
   }
 `;
