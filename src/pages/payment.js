@@ -36,15 +36,26 @@ export default function PaymentPage() {
   const handleAddCard = (e) => {
     e.preventDefault();
     const formData = new FormData(e.target);
+    const cardNumber = formData.get('number')?.replace(/\s/g, '') || '';
+    
+    // Basic card number validation (demo only - real apps should use payment processor)
+    if (cardNumber.length < 13 || cardNumber.length > 19 || !/^\d+$/.test(cardNumber)) {
+      alert('Please enter a valid card number');
+      return;
+    }
+    
+    // Only store last 4 digits for display (never store full card numbers)
+    const lastFour = cardNumber.slice(-4);
     const newCard = {
       id: `card_${Date.now()}`,
       type: 'card',
-      label: `•••• ${formData.get('number').slice(-4)}`,
+      label: `•••• ${lastFour}`,
       icon: '💳',
       isDefault: false
     };
     setPaymentMethods(prev => [...prev, newCard]);
     setShowAddCard(false);
+    e.target.reset();
   };
 
   if (loadingAuth) {

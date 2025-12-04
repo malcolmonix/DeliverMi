@@ -4,6 +4,15 @@ import Link from 'next/link';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from '../lib/firebase';
 
+// Generate a referral code from user info (not exposing UID)
+function generateReferralCode(identifier) {
+  if (!identifier) return 'SHARE10';
+  // Create a simple hash-like code from the first letters and a number
+  const prefix = identifier.replace(/[^a-zA-Z]/g, '').slice(0, 4).toUpperCase();
+  const suffix = Math.abs(identifier.split('').reduce((a, b) => a + b.charCodeAt(0), 0) % 1000);
+  return `${prefix}${suffix}`;
+}
+
 export default function PromotionsPage() {
   const router = useRouter();
   const [user, setUser] = useState(null);
@@ -174,11 +183,11 @@ export default function PromotionsPage() {
           </p>
           <div className="bg-white/20 rounded-xl p-4 mb-4">
             <p className="text-xs text-white/70 mb-1">Your referral code</p>
-            <p className="font-mono font-bold text-xl tracking-wider">{user.uid?.slice(0, 8).toUpperCase() || 'SHARE10'}</p>
+            <p className="font-mono font-bold text-xl tracking-wider">{generateReferralCode(user.displayName || user.email)}</p>
           </div>
           <button
             onClick={() => {
-              const code = user.uid?.slice(0, 8).toUpperCase() || 'SHARE10';
+              const code = generateReferralCode(user.displayName || user.email);
               navigator.share?.({
                 title: 'Get $10 off your first DeliverMi ride!',
                 text: `Use my code ${code} to get $10 off your first ride on DeliverMi!`,

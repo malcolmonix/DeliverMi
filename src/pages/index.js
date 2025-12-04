@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/router';
 import Link from 'next/link';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
@@ -9,6 +9,14 @@ import AddressSearch from '../components/AddressSearch';
 import { REQUEST_RIDE, GET_RIDE_STATUS, CANCEL_RIDE } from '../lib/graphql-operations';
 import { reverseGeocode, getRoute, calculateFare } from '../lib/mapbox';
 import { db, auth } from '../lib/firebase';
+
+// Vehicle options with pricing multipliers
+const VEHICLE_OPTIONS = [
+  { id: 'economy', name: 'Economy', icon: '🚗', multiplier: 0.8, eta: '+3 min' },
+  { id: 'standard', name: 'Standard', icon: '🚙', multiplier: 1.0, eta: '' },
+  { id: 'premium', name: 'Premium', icon: '🚘', multiplier: 1.5, eta: '' },
+  { id: 'xl', name: 'XL', icon: '🚐', multiplier: 1.8, eta: '+5 min' },
+];
 
 export default function Home() {
   const router = useRouter();
@@ -51,13 +59,11 @@ export default function Home() {
     pollInterval: 3000
   });
 
-  // Vehicle options with pricing multipliers
-  const vehicleOptions = [
-    { id: 'economy', name: 'Economy', icon: '🚗', multiplier: 0.8, eta: '+3 min' },
-    { id: 'standard', name: 'Standard', icon: '🚙', multiplier: 1.0, eta: '' },
-    { id: 'premium', name: 'Premium', icon: '🚘', multiplier: 1.5, eta: '' },
-    { id: 'xl', name: 'XL', icon: '🚐', multiplier: 1.8, eta: '+5 min' },
-  ];
+  // Memoize selected vehicle to avoid repeated lookups
+  const selectedVehicleData = useMemo(() => 
+    VEHICLE_OPTIONS.find(v => v.id === selectedVehicle) || VEHICLE_OPTIONS[1],
+    [selectedVehicle]
+  );
 
   // Real-time rider location tracking
   useEffect(() => {
@@ -162,7 +168,6 @@ export default function Home() {
 
     setError(null);
     const vehicleFare = getVehicleFare(selectedVehicle);
-    const vehicle = vehicleOptions.find(v => v.id === selectedVehicle);
 
     try {
       const result = await requestRide({
@@ -177,7 +182,7 @@ export default function Home() {
             fare: parseFloat(vehicleFare || fare || '15.00'),
             distance: route ? parseFloat(route.distanceKm) : null,
             duration: route ? route.durationMin : null,
-            vehicleType: vehicle?.name || 'Standard'
+            vehicleType: selectedVehicleData.name
           }
         }
       });
@@ -228,11 +233,11 @@ export default function Home() {
   };
 
   // Calculate fare with vehicle multiplier
-  const getVehicleFare = (vehicleId) => {
-    const vehicle = vehicleOptions.find(v => v.id === vehicleId);
+  const getVehicleFare = useCallback((vehicleId) => {
+    const vehicle = VEHICLE_OPTIONS.find(v => v.id === vehicleId);
     if (!fare || !vehicle) return null;
     return (parseFloat(fare) * vehicle.multiplier).toFixed(2);
-  };
+  }, [fare]);
 
   const ride = rideData?.ride;
 
@@ -502,7 +507,7 @@ export default function Home() {
                   <div>
                     <label className="block text-xs text-gray-500 mb-2 font-medium">Choose your ride</label>
                     <div className="space-y-2">
-                      {vehicleOptions.map((vehicle) => (
+                      {VEHICLE_OPTIONS.map((vehicle) => (
                         <button
                           key={vehicle.id}
                           onClick={() => setSelectedVehicle(vehicle.id)}
@@ -559,7 +564,7 @@ export default function Home() {
                       Requesting...
                     </span>
                   ) : fare ? (
-                    `Request ${vehicleOptions.find(v => v.id === selectedVehicle)?.name || 'Ride'} - $${getVehicleFare(selectedVehicle)}`
+                    `Request ${selectedVehicleData.name} - $${getVehicleFare(selectedVehicle)}`
                   ) : (
                     'Calculating fare...'
                   )}
