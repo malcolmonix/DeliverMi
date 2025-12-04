@@ -1,13 +1,22 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/router';
-import { onAuthStateChanged } from 'firebase/auth';
+import Link from 'next/link';
+import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { useMutation, useQuery } from '@apollo/client';
-import { collection, doc, onSnapshot } from 'firebase/firestore';
+import { doc, onSnapshot } from 'firebase/firestore';
 import DeliverMiMap from '../components/Map';
 import AddressSearch from '../components/AddressSearch';
-import { REQUEST_RIDE, GET_RIDE_STATUS } from '../lib/graphql-operations';
+import { REQUEST_RIDE, GET_RIDE_STATUS, CANCEL_RIDE } from '../lib/graphql-operations';
 import { reverseGeocode, getRoute, calculateFare } from '../lib/mapbox';
 import { db, auth } from '../lib/firebase';
+
+// Vehicle options with pricing multipliers
+const VEHICLE_OPTIONS = [
+  { id: 'economy', name: 'Economy', icon: '🚗', multiplier: 0.8, eta: '+3 min' },
+  { id: 'standard', name: 'Standard', icon: '🚙', multiplier: 1.0, eta: '' },
+  { id: 'premium', name: 'Premium', icon: '🚘', multiplier: 1.5, eta: '' },
+  { id: 'xl', name: 'XL', icon: '🚐', multiplier: 1.8, eta: '+5 min' },
+];
 
 export default function Home() {
   const router = useRouter();
@@ -25,6 +34,8 @@ export default function Home() {
   const [riderLocation, setRiderLocation] = useState(null);
   const [error, setError] = useState(null);
   const [bottomSheetOpen, setBottomSheetOpen] = useState(true);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [selectedVehicle, setSelectedVehicle] = useState('standard');
 
   // Check authentication state
   useEffect(() => {
@@ -40,12 +51,19 @@ export default function Home() {
   }, [router]);
 
   const [requestRide, { loading: requesting }] = useMutation(REQUEST_RIDE);
+  const [cancelRide, { loading: cancelling }] = useMutation(CANCEL_RIDE);
 
-  const { data: rideData, startPolling, stopPolling } = useQuery(GET_RIDE_STATUS, {
+  const { data: rideData, startPolling, stopPolling, refetch } = useQuery(GET_RIDE_STATUS, {
     variables: { id: activeRideId },
     skip: !activeRideId,
     pollInterval: 3000
   });
+
+  // Memoize selected vehicle to avoid repeated lookups
+  const selectedVehicleData = useMemo(() => 
+    VEHICLE_OPTIONS.find(v => v.id === selectedVehicle) || VEHICLE_OPTIONS[1],
+    [selectedVehicle]
+  );
 
   // Real-time rider location tracking
   useEffect(() => {
@@ -149,6 +167,7 @@ export default function Home() {
     }
 
     setError(null);
+    const vehicleFare = getVehicleFare(selectedVehicle);
 
     try {
       const result = await requestRide({
@@ -160,9 +179,10 @@ export default function Home() {
             dropoffAddress: dropoffAddress || `${dropoff.lat.toFixed(4)}, ${dropoff.lng.toFixed(4)}`,
             dropoffLat: dropoff.lat,
             dropoffLng: dropoff.lng,
-            fare: parseFloat(fare || '15.00'),
+            fare: parseFloat(vehicleFare || fare || '15.00'),
             distance: route ? parseFloat(route.distanceKm) : null,
-            duration: route ? route.durationMin : null
+            duration: route ? route.durationMin : null,
+            vehicleType: selectedVehicleData.name
           }
         }
       });
@@ -179,7 +199,17 @@ export default function Home() {
     }
   };
 
-  const handleCancelRide = () => {
+  const handleCancelRide = async () => {
+    if (activeRideId) {
+      try {
+        await cancelRide({
+          variables: { rideId: activeRideId, reason: 'Cancelled by user' }
+        });
+      } catch (err) {
+        console.error('Error cancelling ride:', err);
+        // Continue with local cleanup even if API call fails
+      }
+    }
     setActiveRideId(null);
     setPickup(null);
     setDropoff(null);
@@ -192,6 +222,22 @@ export default function Home() {
     stopPolling();
     setBottomSheetOpen(true);
   };
+
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+      router.push('/login');
+    } catch (err) {
+      console.error('Error signing out:', err);
+    }
+  };
+
+  // Calculate fare with vehicle multiplier
+  const getVehicleFare = useCallback((vehicleId) => {
+    const vehicle = VEHICLE_OPTIONS.find(v => v.id === vehicleId);
+    if (!fare || !vehicle) return null;
+    return (parseFloat(fare) * vehicle.multiplier).toFixed(2);
+  }, [fare]);
 
   const ride = rideData?.ride;
 
@@ -212,8 +258,94 @@ export default function Home() {
 
   return (
     <div className="h-screen w-screen relative overflow-hidden">
+      {/* Menu Button */}
+      <button
+        onClick={() => setMenuOpen(true)}
+        className="absolute top-4 left-4 z-20 bg-white rounded-full p-3 shadow-lg hover:bg-gray-50"
+      >
+        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+        </svg>
+      </button>
+
+      {/* Side Menu */}
+      {menuOpen && (
+        <div className="fixed inset-0 z-[60]">
+          <div 
+            className="absolute inset-0 bg-black/50" 
+            onClick={() => setMenuOpen(false)}
+          ></div>
+          <div className="absolute left-0 top-0 bottom-0 w-80 bg-white shadow-2xl">
+            <div className="p-6 bg-black text-white">
+              <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center mb-4">
+                <span className="text-3xl">{user.displayName?.charAt(0) || user.email?.charAt(0) || '?'}</span>
+              </div>
+              <h2 className="text-xl font-bold">{user.displayName || 'User'}</h2>
+              <p className="text-white/70 text-sm">{user.email}</p>
+            </div>
+            <nav className="py-4">
+              <Link 
+                href="/"
+                className="flex items-center gap-4 px-6 py-4 hover:bg-gray-50"
+                onClick={() => setMenuOpen(false)}
+              >
+                <span className="text-2xl">🏠</span>
+                <span className="font-medium">Home</span>
+              </Link>
+              <Link 
+                href="/rides"
+                className="flex items-center gap-4 px-6 py-4 hover:bg-gray-50"
+                onClick={() => setMenuOpen(false)}
+              >
+                <span className="text-2xl">🚗</span>
+                <span className="font-medium">My Rides</span>
+              </Link>
+              <Link 
+                href="/payment"
+                className="flex items-center gap-4 px-6 py-4 hover:bg-gray-50"
+                onClick={() => setMenuOpen(false)}
+              >
+                <span className="text-2xl">💳</span>
+                <span className="font-medium">Payment</span>
+              </Link>
+              <Link 
+                href="/promotions"
+                className="flex items-center gap-4 px-6 py-4 hover:bg-gray-50"
+                onClick={() => setMenuOpen(false)}
+              >
+                <span className="text-2xl">🎁</span>
+                <span className="font-medium">Promotions</span>
+              </Link>
+              <Link 
+                href="/settings"
+                className="flex items-center gap-4 px-6 py-4 hover:bg-gray-50"
+                onClick={() => setMenuOpen(false)}
+              >
+                <span className="text-2xl">⚙️</span>
+                <span className="font-medium">Settings</span>
+              </Link>
+              <Link 
+                href="/help"
+                className="flex items-center gap-4 px-6 py-4 hover:bg-gray-50"
+                onClick={() => setMenuOpen(false)}
+              >
+                <span className="text-2xl">❓</span>
+                <span className="font-medium">Help</span>
+              </Link>
+              <button 
+                onClick={handleLogout}
+                className="flex items-center gap-4 px-6 py-4 hover:bg-gray-50 w-full text-left text-red-600"
+              >
+                <span className="text-2xl">🚪</span>
+                <span className="font-medium">Logout</span>
+              </button>
+            </nav>
+          </div>
+        </div>
+      )}
+
       {/* Full screen map */}
-      <div className="absolute inset-0" onClickCapture={handleMapClick}>
+      <div className="absolute inset-0" onClick={handleMapClick}>
         <DeliverMiMap
           orders={[]}
           pickup={pickup}
@@ -370,6 +502,38 @@ export default function Home() {
                   )}
                 </div>
 
+                {/* Vehicle Selection */}
+                {route && fare && (
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-2 font-medium">Choose your ride</label>
+                    <div className="space-y-2">
+                      {VEHICLE_OPTIONS.map((vehicle) => (
+                        <button
+                          key={vehicle.id}
+                          onClick={() => setSelectedVehicle(vehicle.id)}
+                          className={`w-full p-3 rounded-xl border-2 flex items-center justify-between transition-colors ${
+                            selectedVehicle === vehicle.id 
+                              ? 'border-black bg-gray-50' 
+                              : 'border-gray-200 hover:border-gray-300'
+                          }`}
+                        >
+                          <div className="flex items-center gap-3">
+                            <span className="text-2xl">{vehicle.icon}</span>
+                            <div className="text-left">
+                              <p className="font-medium">{vehicle.name}</p>
+                              <p className="text-xs text-gray-500">
+                                {route.durationMin} min {vehicle.eta}
+                              </p>
+                            </div>
+                          </div>
+                          <span className="font-bold">${getVehicleFare(vehicle.id)}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Route Info */}
                 {route && (
                   <div className="p-4 bg-blue-50 rounded-xl border border-blue-100">
                     <div className="flex justify-between items-center mb-2">
@@ -400,7 +564,7 @@ export default function Home() {
                       Requesting...
                     </span>
                   ) : fare ? (
-                    `Request Ride - $${fare.toFixed(2)}`
+                    `Request ${selectedVehicleData.name} - $${getVehicleFare(selectedVehicle)}`
                   ) : (
                     'Calculating fare...'
                   )}
