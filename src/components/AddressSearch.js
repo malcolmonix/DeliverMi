@@ -5,7 +5,8 @@ export default function AddressSearch({
   value, 
   onChange, 
   placeholder = 'Search for an address...',
-  onSelect 
+  onSelect,
+  onFocus
 }) {
   const [query, setQuery] = useState(value || '');
   const [results, setResults] = useState([]);
@@ -81,6 +82,7 @@ export default function AddressSearch({
         onChange={(e) => handleSearch(e.target.value)}
         onFocus={() => {
           if (results.length > 0) setIsOpen(true);
+          if (onFocus) onFocus();
         }}
         placeholder={placeholder}
         className="w-full p-3 rounded-lg border border-gray-200 focus:border-black focus:outline-none text-sm"

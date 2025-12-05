@@ -51,10 +51,10 @@ export default function RideDetailPage() {
       (snapshot) => {
         if (snapshot.exists()) {
           const locData = snapshot.data();
-          if (locData.latitude && locData.longitude) {
+          if (locData.lat && locData.lng) {
             setRiderLocation({
-              lat: locData.latitude,
-              lng: locData.longitude
+              lat: locData.lat,
+              lng: locData.lng
             });
           }
         }

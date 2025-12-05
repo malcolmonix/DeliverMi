@@ -93,10 +93,11 @@ export async function getRoute(start, end) {
  * Calculate fare based on distance and duration
  */
 export function calculateFare(distanceKm, durationMin) {
-  const baseFare = 2.50;
-  const perKmRate = 1.20;
-  const perMinRate = 0.25;
-  const minimumFare = 5.00;
+  // Nigerian Naira pricing
+  const baseFare = 1000; // ₦1,000 base fare
+  const perKmRate = 500; // ₦500 per km
+  const perMinRate = 100; // ₦100 per minute
+  const minimumFare = 2000; // ₦2,000 minimum
   
   const fare = baseFare + (distanceKm * perKmRate) + (durationMin * perMinRate);
   return Math.max(fare, minimumFare).toFixed(2);

@@ -98,6 +98,18 @@ export const CANCEL_RIDE = gql`
   }
 `;
 
+// Set delivery confirmation code (customer generates this)
+export const SET_DELIVERY_CODE = gql`
+  mutation SetDeliveryCode($rideId: ID!, $code: String!) {
+    setDeliveryCode(rideId: $rideId, code: $code) {
+      id
+      rideId
+      deliveryCode
+      status
+    }
+  }
+`;
+
 // Rider/Driver Queries and Mutations (for dashboard features)
 export const RIDER_ORDER_HISTORY = gql`
   query RiderOrderHistory($riderId: ID!, $limit: Int, $offset: Int) {

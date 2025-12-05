@@ -6,7 +6,7 @@ export default function DeliverMiMap(props) {
     if (typeof window === "undefined") {
         return null;
     }
-    const { orders = [], pickup, dropoff, riderLocation, route } = props;
+    const { orders = [], pickup, dropoff, riderLocation, route, onClick, rideStatus } = props;
     const [viewState, setViewState] = useState({
         latitude: 40.7128,
         longitude: -74.0060,
@@ -79,6 +79,7 @@ export default function DeliverMiMap(props) {
                 ref={mapRef}
                 {...viewState}
                 onMove={evt => setViewState(evt.viewState)}
+                onClick={onClick}
                 style={{ width: '100%', height: '100%' }}
                 mapStyle="mapbox://styles/mapbox/streets-v11"
                 mapboxAccessToken={mapboxToken}
@@ -162,21 +163,38 @@ export default function DeliverMiMap(props) {
                     </Marker>
                 )}
 
-                {/* Rider location marker with pulsing animation */}
+                {/* Rider location marker with pulsing animation and direction */}
                 {riderLocation && (
                     <Marker 
                         latitude={riderLocation.lat} 
                         longitude={riderLocation.lng} 
                         anchor="center"
                     >
-                        <div className="relative">
+                        <div className="relative flex flex-col items-center">
                             {/* Pulsing circle */}
-                            <div className="absolute inset-0 bg-blue-500 rounded-full animate-ping opacity-75"></div>
-                            {/* Rider icon */}
-                            <div className="relative w-10 h-10 bg-blue-500 rounded-full border-4 border-white shadow-lg flex items-center justify-center">
-                                <svg className="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 20 20">
-                                    <path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z" />
+                            <div className="absolute inset-0 bg-blue-500 rounded-full animate-pulse opacity-50"></div>
+                            
+                            {/* Rider icon with direction arrow */}
+                            <div 
+                                className="relative w-12 h-12 bg-gradient-to-br from-blue-400 to-blue-600 rounded-full border-4 border-white shadow-xl flex items-center justify-center transition-transform"
+                                style={{
+                                  transform: riderLocation.heading ? `rotate(${riderLocation.heading}deg)` : 'rotate(0deg)'
+                                }}
+                            >
+                                {/* Bike/scooter icon */}
+                                <svg className="w-7 h-7 text-white" fill="currentColor" viewBox="0 0 24 24">
+                                    <path d="M18.5 9.5C19.88 9.5 21 8.38 21 7s-1.12-2.5-2.5-2.5S16 5.62 16 7s1.12 2.5 2.5 2.5zm-13 0C7.88 9.5 9 8.38 9 7s-1.12-2.5-2.5-2.5S4 5.62 4 7s1.12 2.5 2.5 2.5zm6.5-8c1.66 0 3-1.34 3-3S13.66 0 12 0s-3 1.34-3 3 1.34 3 3 3z" />
                                 </svg>
+                                
+                                {/* Direction arrow */}
+                                <div className="absolute -top-3 left-1/2 transform -translate-x-1/2">
+                                    <div className="w-0 h-0 border-l-2 border-r-2 border-b-4 border-l-transparent border-r-transparent border-b-white"></div>
+                                </div>
+                            </div>
+                            
+                            {/* Status label */}
+                            <div className="absolute -bottom-6 bg-blue-600 text-white text-xs px-2 py-1 rounded-full font-semibold whitespace-nowrap shadow-md">
+                                🚗 En Route
                             </div>
                         </div>
                     </Marker>
@@ -207,6 +225,41 @@ export default function DeliverMiMap(props) {
             {error && (
                 <div className="absolute top-4 left-4 right-4 bg-red-50 border border-red-200 text-red-800 p-3 rounded-lg text-sm shadow-lg z-50">
                     ⚠️ {error}
+                </div>
+            )}
+
+            {/* Rider Location Tracker Overlay */}
+            {riderLocation && rideStatus && (
+                <div className="absolute top-4 right-4 bg-white rounded-lg shadow-lg p-4 max-w-xs z-40">
+                    <div className="flex items-center gap-3 mb-2">
+                        <div className="relative flex items-center justify-center w-10 h-10">
+                            <div className="absolute inset-0 bg-blue-500 rounded-full animate-ping opacity-25"></div>
+                            <div className="relative w-8 h-8 bg-blue-500 rounded-full border-2 border-white flex items-center justify-center">
+                                <span className="text-white text-sm">🏍️</span>
+                            </div>
+                        </div>
+                        <div>
+                            <h3 className="font-bold text-gray-900">Your Rider</h3>
+                            <p className="text-xs text-gray-500">Live Location</p>
+                        </div>
+                    </div>
+                    
+                    <div className="bg-blue-50 rounded p-2 mb-2">
+                        <p className="text-xs text-gray-600 mb-1">Status:</p>
+                        <p className="text-sm font-semibold text-blue-900">
+                            {rideStatus === 'ACCEPTED' && '🚗 On the way to pickup'}
+                            {rideStatus === 'ARRIVED_AT_PICKUP' && '📍 Arrived at pickup'}
+                            {rideStatus === 'PICKED_UP' && '🚗 On the way to destination'}
+                            {rideStatus === 'ARRIVED_AT_DROPOFF' && '📍 Arrived at destination'}
+                            {rideStatus === 'COMPLETED' && '✅ Ride completed'}
+                            {!['ACCEPTED', 'ARRIVED_AT_PICKUP', 'PICKED_UP', 'ARRIVED_AT_DROPOFF', 'COMPLETED'].includes(rideStatus) && rideStatus}
+                        </p>
+                    </div>
+
+                    <div className="text-xs text-gray-600 flex items-center gap-1">
+                        <span>📍</span>
+                        <span>{riderLocation.lat.toFixed(4)}, {riderLocation.lng.toFixed(4)}</span>
+                    </div>
                 </div>
             )}
         </div>

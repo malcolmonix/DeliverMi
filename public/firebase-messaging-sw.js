@@ -1,12 +1,15 @@
 importScripts('https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js');
 importScripts('https://www.gstatic.com/firebasejs/9.22.1/firebase-messaging-compat.js');
 
-// Initialize the Firebase app in the service worker by passing in
-// the messagingSenderId. Other firebase config values are optional here
+// Initialize the Firebase app in the service worker
+// Must include all required config values including appId
 firebase.initializeApp({
   apiKey: 'AIzaSyC8XjBJN-Inntjfqd6GhkfRcbTe4hyMx6Q',
+  authDomain: 'chopchop-67750.firebaseapp.com',
   projectId: 'chopchop-67750',
-  messagingSenderId: '835361851966'
+  storageBucket: 'chopchop-67750.firebasestorage.app',
+  messagingSenderId: '835361851966',
+  appId: '1:835361851966:web:78810ea4389297a8679f6f'
 });
 
 const messaging = firebase.messaging();

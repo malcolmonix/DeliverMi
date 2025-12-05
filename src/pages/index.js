@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useRouter } from 'next/router';
 import Link from 'next/link';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
@@ -6,17 +6,16 @@ import { useMutation, useQuery } from '@apollo/client';
 import { doc, onSnapshot } from 'firebase/firestore';
 import DeliverMiMap from '../components/Map';
 import AddressSearch from '../components/AddressSearch';
-import { REQUEST_RIDE, GET_RIDE_STATUS, CANCEL_RIDE } from '../lib/graphql-operations';
+import ActiveRideView from '../components/ActiveRideView';
+import CustomerDeliveryConfirmation from '../components/CustomerDeliveryConfirmation';
+import RatingModal from '../components/RatingModal';
+import { REQUEST_RIDE, GET_RIDE_STATUS, CANCEL_RIDE, GET_MY_RIDES, SET_DELIVERY_CODE } from '../lib/graphql-operations';
 import { reverseGeocode, getRoute, calculateFare } from '../lib/mapbox';
 import { db, auth } from '../lib/firebase';
+import { requestNotificationPermission, onMessageListener, showNotification } from '../lib/notifications';
 
-// Vehicle options with pricing multipliers
-const VEHICLE_OPTIONS = [
-  { id: 'economy', name: 'Economy', icon: '🚗', multiplier: 0.8, eta: '+3 min' },
-  { id: 'standard', name: 'Standard', icon: '🚙', multiplier: 1.0, eta: '' },
-  { id: 'premium', name: 'Premium', icon: '🚘', multiplier: 1.5, eta: '' },
-  { id: 'xl', name: 'XL', icon: '🚐', multiplier: 1.8, eta: '+5 min' },
-];
+// Simple dispatch - no vehicle selection needed
+// Currency: Nigerian Naira (₦)
 
 export default function Home() {
   const router = useRouter();
@@ -27,7 +26,13 @@ export default function Home() {
   const [pickupAddress, setPickupAddress] = useState('');
   const [dropoffAddress, setDropoffAddress] = useState('');
   const [mode, setMode] = useState('pickup');
-  const [activeRideId, setActiveRideId] = useState(null);
+  const [activeRideId, setActiveRideId] = useState(() => {
+    // Restore active ride from localStorage on mount
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('activeRideId') || null;
+    }
+    return null;
+  });
   const [route, setRoute] = useState(null);
   const [fare, setFare] = useState(null);
   const [loadingAddress, setLoadingAddress] = useState(false);
@@ -35,7 +40,241 @@ export default function Home() {
   const [error, setError] = useState(null);
   const [bottomSheetOpen, setBottomSheetOpen] = useState(true);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [selectedVehicle, setSelectedVehicle] = useState('standard');
+  const [localRideData, setLocalRideData] = useState(null); // Workaround for mock Firestore
+  const [previousRideStatus, setPreviousRideStatus] = useState(null);
+  const [showRatingModal, setShowRatingModal] = useState(false);
+  const [riderToRate, setRiderToRate] = useState(null);
+  const fareCalculated = useRef(false);
+
+  const [requestRide, { loading: requesting }] = useMutation(REQUEST_RIDE);
+  const [cancelRide, { loading: cancelling }] = useMutation(CANCEL_RIDE);
+  const [setDeliveryCode] = useMutation(SET_DELIVERY_CODE);
+
+  // Query to get user's rides and check for active ones
+  const { data: myRidesData } = useQuery(GET_MY_RIDES, {
+    skip: !user,
+    onCompleted: (data) => {
+      // Check if user has an active ride and restore it
+      if (data?.myRides && !activeRideId) {
+        const activeRide = data.myRides.find(r => 
+          r.status !== 'COMPLETED' && r.status !== 'CANCELLED'
+        );
+        if (activeRide) {
+          console.log('🔄 Restoring active ride:', activeRide.id);
+          setActiveRideId(activeRide.id);
+          localStorage.setItem('activeRideId', activeRide.id);
+          setBottomSheetOpen(true);
+        }
+      }
+    }
+  });
+
+  const { data: rideData, startPolling, stopPolling, refetch } = useQuery(GET_RIDE_STATUS, {
+    variables: { id: activeRideId || '' },  // Provide empty string if null to prevent GraphQL errors
+    skip: !activeRideId || !user,  // Skip if no active ride OR not authenticated
+    pollInterval: activeRideId && user ? 3000 : 0,  // Only poll when we have both
+    onCompleted: (data) => {
+      console.log('📊 GET_RIDE_STATUS query completed:', data);
+      // If ride doesn't exist, clear it
+      if (!data?.ride) {
+        console.warn('⚠️ Ride not found, clearing from localStorage');
+        setActiveRideId(null);
+        localStorage.removeItem('activeRideId');
+      }
+    },
+    onError: (error) => {
+      console.error('❌ GET_RIDE_STATUS query error:', error);
+      // If the ride query fails (ride not found or invalid), clear the active ride
+      if (error.message?.includes('400') || error.message?.includes('not found') || error.message?.includes('Authentication')) {
+        console.warn('⚠️ Clearing invalid active ride ID from localStorage');
+        setActiveRideId(null);
+        localStorage.removeItem('activeRideId');
+      }
+    }
+  });
+
+  // Real-time rider location tracking from Firestore
+  useEffect(() => {
+    if (!activeRideId) {
+      console.log('⏳ No active ride, skipping location listener setup');
+      return;
+    }
+
+    const ride = rideData?.ride || localRideData;
+    if (!ride) {
+      console.log('⏳ No ride data available yet, waiting for API response...');
+      return;
+    }
+
+    const riderId = ride.riderId || ride.rider?.id;
+    if (!riderId) {
+      console.log('⏳ Waiting for ride data with riderId..., ride data:', ride);
+      return;
+    }
+
+    console.log('🚗 Setting up real-time listener for rider location:', riderId);
+    console.log('📍 Ride details:', { rideId: activeRideId, riderId, status: ride.status, hasLocation: !!ride.rider?.location });
+    
+    const unsubscribe = onSnapshot(
+      doc(db, 'rider-locations', riderId),
+      (snapshot) => {
+        if (snapshot.exists()) {
+          const data = snapshot.data();
+          console.log('🎯 RIDER LOCATION UPDATE from Firestore:', {
+            latitude: data.latitude || data.lat,
+            longitude: data.longitude || data.lng,
+            heading: data.heading,
+            speed: data.speed,
+            timestamp: data.updatedAt || data.at
+          });
+          
+          const lat = data.latitude || data.lat;
+          const lng = data.longitude || data.lng;
+          
+          if (lat && lng) {
+            const location = {
+              lat: lat,
+              lng: lng,
+              heading: data.heading || 0,
+              speed: data.speed || 0,
+              timestamp: data.updatedAt || data.at
+            };
+            
+            setRiderLocation(location);
+            console.log('✅ Rider location updated on map with heading:', location.heading, 'degrees');
+            
+            // Fit map to show both dropoff and rider when location updates
+            if (dropoff) {
+              try {
+                const mapElement = document.querySelector('[class*="mapboxgl"]');
+                if (mapElement) {
+                  console.log('📍 Rider at:', { lat, lng }, 'Dropoff at:', dropoff);
+                }
+              } catch (e) {
+                // Silently fail, map will still show
+              }
+            }
+          }
+        } else {
+          console.log('⚠️ No rider location document found yet for riderId:', riderId);
+        }
+      },
+      (error) => {
+        if (error.code === 'permission-denied') {
+          console.warn('⚠️ Permission denied reading rider location. Firestore rules may need update.');
+        } else {
+          console.error('❌ Error listening to rider location:', error.message || error);
+        }
+      }
+    );
+
+    return () => {
+      console.log('🔌 Unsubscribing from rider location listener');
+      unsubscribe();
+    };
+  }, [activeRideId, rideData?.ride?.riderId, localRideData?.riderId]);
+
+  // Real-time ride status tracking from Firestore
+  useEffect(() => {
+    if (!activeRideId) return;
+
+    console.log('Setting up real-time listener for ride status:', activeRideId);
+    
+    const unsubscribe = onSnapshot(
+      doc(db, 'customer-rides', activeRideId),
+      (snapshot) => {
+        if (snapshot.exists()) {
+          const data = snapshot.data();
+          console.log('🔄 Ride status update from Firestore:', data);
+          console.log('🔔 riderRequestedCode flag:', data.riderRequestedCode);
+          
+          // Update local ride data with latest from Firestore
+          setLocalRideData(prev => ({
+            ...prev,
+            ...data,
+            id: activeRideId
+          }));
+          
+          // Refetch GraphQL to ensure consistency
+          refetch();
+          
+          if (data.status === 'COMPLETED' || data.status === 'CANCELLED') {
+            console.log('✅ Ride finished with status:', data.status);
+            
+            // Store previous ride status to detect completion
+            if (previousRideStatus !== 'COMPLETED' && data.status === 'COMPLETED') {
+              // Show rating modal automatically
+              const ride = rideData?.ride || localRideData;
+              if (ride && ride.rider) {
+                setRiderToRate({
+                  id: ride.rider.id || ride.riderId,
+                  name: ride.rider.displayName || 'Your Rider'
+                });
+                setShowRatingModal(true);
+              }
+            }
+            
+            setPreviousRideStatus(data.status);
+          }
+        }
+      },
+      (error) => {
+        console.error('Error listening to ride status:', error);
+      }
+    );
+
+    return () => unsubscribe();
+  }, [activeRideId, refetch]);
+
+  // Persist activeRideId to localStorage
+  useEffect(() => {
+    if (activeRideId) {
+      localStorage.setItem('activeRideId', activeRideId);
+      console.log('💾 Saved activeRideId to localStorage:', activeRideId);
+    } else {
+      localStorage.removeItem('activeRideId');
+      console.log('🗑️ Removed activeRideId from localStorage');
+    }
+  }, [activeRideId]);
+
+  // Fallback to GraphQL rider location
+  useEffect(() => {
+    if (rideData?.ride?.rider?.latitude && rideData?.ride?.rider?.longitude) {
+      setRiderLocation({
+        lat: rideData.ride.rider.latitude,
+        lng: rideData.ride.rider.longitude
+      });
+    }
+  }, [rideData?.ride?.rider]);
+
+  // Update route when rider location changes during active ride
+  useEffect(() => {
+    const ride = rideData?.ride || localRideData;
+    if (!activeRideId || !riderLocation || !ride) return;
+
+    // Determine destination based on ride status
+    let destination;
+    if (ride.status === 'PICKED_UP' || ride.status === 'ARRIVED_AT_DROPOFF') {
+      // Rider is heading to dropoff
+      destination = dropoff || { lat: ride.dropoffLat, lng: ride.dropoffLng };
+    } else if (ride.status === 'ACCEPTED' || ride.status === 'ARRIVED_AT_PICKUP') {
+      // Rider is heading to pickup
+      destination = pickup || { lat: ride.pickupLat, lng: ride.pickupLng };
+    }
+
+    if (destination && destination.lat && destination.lng) {
+      console.log('🗺️ Updating route from rider to destination:', { riderLocation, destination, status: ride.status });
+      
+      getRoute(riderLocation, destination)
+        .then(routeData => {
+          setRoute(routeData.coordinates);
+          console.log('✅ Route updated successfully');
+        })
+        .catch(err => {
+          console.error('❌ Error updating route:', err);
+        });
+    }
+  }, [riderLocation, activeRideId, rideData?.ride?.status, localRideData?.status, pickup, dropoff]);
 
   // Check authentication state
   useEffect(() => {
@@ -50,56 +289,51 @@ export default function Home() {
     return () => unsubscribe();
   }, [router]);
 
-  const [requestRide, { loading: requesting }] = useMutation(REQUEST_RIDE);
-  const [cancelRide, { loading: cancelling }] = useMutation(CANCEL_RIDE);
-
-  const { data: rideData, startPolling, stopPolling, refetch } = useQuery(GET_RIDE_STATUS, {
-    variables: { id: activeRideId },
-    skip: !activeRideId,
-    pollInterval: 3000
-  });
-
-  // Memoize selected vehicle to avoid repeated lookups
-  const selectedVehicleData = useMemo(() => 
-    VEHICLE_OPTIONS.find(v => v.id === selectedVehicle) || VEHICLE_OPTIONS[1],
-    [selectedVehicle]
-  );
-
-  // Real-time rider location tracking
+  // Setup notifications
   useEffect(() => {
-    if (!activeRideId || !rideData?.ride?.rider?.id) return;
+    if (!user) return;
 
-    const riderId = rideData.ride.rider.id;
-    const unsubscribe = onSnapshot(
-      doc(db, 'rider-locations', riderId),
-      (snapshot) => {
-        if (snapshot.exists()) {
-          const data = snapshot.data();
-          if (data.latitude && data.longitude) {
-            setRiderLocation({
-              lat: data.latitude,
-              lng: data.longitude
-            });
-          }
-        }
-      },
-      (error) => {
-        console.error('Error listening to rider location:', error);
+    const setupNotifications = async () => {
+      await requestNotificationPermission();
+    };
+
+    setupNotifications();
+
+    // Listen for foreground messages
+    onMessageListener()
+      .then((payload) => {
+        console.log('Received foreground message:', payload);
+        const title = payload.notification?.title || 'Ride Update';
+        const body = payload.notification?.body || '';
+        showNotification(title, body);
+      })
+      .catch((err) => console.error('Failed to receive message:', err));
+  }, [user]);
+
+  // Monitor ride status changes and show notifications
+  useEffect(() => {
+    const ride = rideData?.ride || localRideData;
+    if (!ride) return;
+
+    const currentStatus = ride.status;
+    
+    if (previousRideStatus && previousRideStatus !== currentStatus) {
+      const statusNotifications = {
+        'ACCEPTED': { title: '🚗 Driver Found!', body: 'Your driver is on the way to pickup' },
+        'ARRIVED_AT_PICKUP': { title: '📍 Driver Arrived', body: 'Your driver has arrived at the pickup location' },
+        'PICKED_UP': { title: '🚗 Trip Started', body: 'You are on the way to your destination' },
+        'ARRIVED_AT_DROPOFF': { title: '📍 Almost There', body: 'You have arrived at your destination' },
+        'COMPLETED': { title: '✅ Trip Completed', body: 'Thank you for using our service!' }
+      };
+      
+      const notif = statusNotifications[currentStatus];
+      if (notif) {
+        showNotification(notif.title, notif.body);
       }
-    );
-
-    return () => unsubscribe();
-  }, [activeRideId, rideData?.ride?.rider?.id]);
-
-  // Fallback to GraphQL rider location
-  useEffect(() => {
-    if (rideData?.ride?.rider?.latitude && rideData?.ride?.rider?.longitude) {
-      setRiderLocation({
-        lat: rideData.ride.rider.latitude,
-        lng: rideData.ride.rider.longitude
-      });
     }
-  }, [rideData?.ride?.rider]);
+    
+    setPreviousRideStatus(currentStatus);
+  }, [rideData?.ride?.status, localRideData?.status]);
 
   // Reverse geocode when pickup is set
   useEffect(() => {
@@ -126,50 +360,152 @@ export default function Home() {
   // Calculate route and fare
   useEffect(() => {
     if (pickup && dropoff && !activeRideId) {
+      console.log('💰 Starting fare calculation...');
+      console.log('💰 Pickup:', pickup);
+      console.log('💰 Dropoff:', dropoff);
+      console.log('💰 Active ride ID:', activeRideId);
+      fareCalculated.current = false; // Reset flag at start of calculation
+      setFare(null); // Clear old fare
+      
+      // Set a timeout to fallback to default fare if route takes too long
+      const timeout = setTimeout(() => {
+        if (!fareCalculated.current) {
+          console.warn('Route calculation timeout, using default fare');
+          setFare('5000.00');
+          fareCalculated.current = true;
+        }
+      }, 3000); // 3 second timeout
+      
       getRoute(pickup, dropoff).then(routeData => {
-        if (routeData) {
-          setRoute(routeData);
-          const calculatedFare = calculateFare(parseFloat(routeData.distanceKm), routeData.durationMin);
-          setFare(calculatedFare);
+        if (!fareCalculated.current) {
+          clearTimeout(timeout);
+          console.log('✅ Route data received:', routeData);
+          if (routeData) {
+            setRoute(routeData);
+            const calculatedFare = calculateFare(parseFloat(routeData.distanceKm), routeData.durationMin);
+            console.log('💰 Calculated fare:', calculatedFare);
+            console.log('💰 Distance:', routeData.distanceKm, 'km');
+            console.log('💰 Duration:', routeData.durationMin, 'min');
+            setFare(calculatedFare);
+            fareCalculated.current = true;
+          } else {
+            console.warn('No route data received, using default fare');
+            setFare('5000.00');
+            fareCalculated.current = true;
+          }
+        }
+      }).catch(err => {
+        if (!fareCalculated.current) {
+          clearTimeout(timeout);
+          console.error('Error calculating route:', err);
+          setFare('5000.00');
+          fareCalculated.current = true;
         }
       });
+      
+      return () => clearTimeout(timeout);
+    } else if (!pickup || !dropoff) {
+      // Reset when either location is cleared
+      setFare(null);
+      setRoute(null);
+      fareCalculated.current = false;
     }
   }, [pickup, dropoff, activeRideId]);
 
   const handleMapClick = useCallback((e) => {
-    if (activeRideId) return;
+    console.log('🗺️ Map clicked! Event:', e);
+    console.log('🗺️ activeRideId:', activeRideId);
+    console.log('🗺️ mode:', mode);
+    console.log('🗺️ e.lngLat:', e.lngLat);
+    
+    if (activeRideId) {
+      console.log('❌ Click blocked - active ride exists:', activeRideId);
+      showNotification('⚠️ Active Ride', 'Please complete or clear your current ride before booking a new one');
+      return;
+    }
+    
+    // Check if event has lngLat (Mapbox event) or it's a DOM event
+    if (!e.lngLat) {
+      console.log('❌ Click blocked - no lngLat in event');
+      return; // Ignore non-map clicks (like GPS button)
+    }
 
     const coords = { lat: e.lngLat.lat, lng: e.lngLat.lng };
+    console.log('✅ Map click accepted! Coords:', coords);
+    
     if (mode === 'pickup') {
+      console.log('📍 Setting PICKUP location:', coords);
       setPickup(coords);
       setPickupAddress('');
       setMode('dropoff');
       setRoute(null);
-      setFare(null);
     } else {
+      console.log('📍 Setting DROPOFF location:', coords);
       setDropoff(coords);
       setDropoffAddress('');
       setRoute(null);
-      setFare(null);
     }
     setBottomSheetOpen(true);
   }, [activeRideId, mode]);
 
+  const handleSubmitRating = async ({ rating, comment, riderId }) => {
+    console.log('📝 Submitting rating:', { rating, comment, riderId });
+    // TODO: Add GraphQL mutation to submit rating
+    // For now, just log it
+    showNotification('⭐ Rating Submitted', `Thank you for rating ${rating} stars!`);
+    setShowRatingModal(false);
+    setRiderToRate(null);
+  };
+
+  const handleBookAnotherRide = () => {
+    console.log('🔄 Resetting UI to default state for new booking');
+    setActiveRideId(null);
+    setLocalRideData(null);
+    setPickup(null);
+    setDropoff(null);
+    setPickupAddress('');
+    setDropoffAddress('');
+    setRoute(null);
+    setFare(null);
+    setRiderLocation(null);
+    setMode('pickup');
+    setBottomSheetOpen(true);
+    setPreviousRideStatus(null);
+    setShowRatingModal(false);
+    setRiderToRate(null);
+    localStorage.removeItem('activeRideId');
+    fareCalculated.current = false;
+  };
+
   const handleRequestRide = async () => {
+    console.log('🚀 handleRequestRide called - BUTTON CLICKED!');
+    console.log('pickup:', pickup, 'dropoff:', dropoff, 'fare:', fare);
+    
+    // Prevent booking if user already has an active ride
+    if (activeRideId) {
+      console.log('❌ User already has active ride:', activeRideId);
+      setError('You already have an active ride. Please complete or cancel it first.');
+      showNotification('⚠️ Active Ride', 'You already have an active ride');
+      return;
+    }
+    
     if (!pickup || !dropoff) {
+      console.log('❌ Missing pickup or dropoff');
       setError('Please select both pickup and dropoff locations');
       return;
     }
 
     if (!user) {
+      console.log('❌ User not authenticated, redirecting to login');
       router.push('/login');
       return;
     }
 
     setError(null);
-    const vehicleFare = getVehicleFare(selectedVehicle);
+    console.log('✅ All checks passed. Attempting to request ride...');
 
     try {
+      console.log('📤 Sending GraphQL mutation...');
       const result = await requestRide({
         variables: {
           input: {
@@ -179,18 +515,31 @@ export default function Home() {
             dropoffAddress: dropoffAddress || `${dropoff.lat.toFixed(4)}, ${dropoff.lng.toFixed(4)}`,
             dropoffLat: dropoff.lat,
             dropoffLng: dropoff.lng,
-            fare: parseFloat(vehicleFare || fare || '15.00'),
-            distance: route ? parseFloat(route.distanceKm) : null,
-            duration: route ? route.durationMin : null,
-            vehicleType: selectedVehicleData.name
+            fare: fare ? parseFloat(fare) : 5000.00,
+            distance: route ? parseFloat(route.distanceKm) : 1.0,
+            duration: route ? route.durationMin : 10,
+            paymentMethod: 'CASH',
+            vehicleType: 'Standard'
           }
         }
       });
       
+      console.log('Ride request result:', result);
+      console.log('result.data:', result.data);
+      console.log('result.data.requestRide:', result.data?.requestRide);
+      
       if (result.data?.requestRide) {
-        setActiveRideId(result.data.requestRide.id);
+        console.log('✅ Setting active ride ID:', result.data.requestRide.id);
+        const rideData = result.data.requestRide;
+        setActiveRideId(rideData.id);
+        setLocalRideData(rideData); // Store ride data locally for mock Firestore compatibility
+        
         startPolling(3000);
         setBottomSheetOpen(true);
+        console.log('✅ Ride requested successfully!');
+      } else {
+        console.error('❌ No requestRide data in result:', result);
+        setError('Ride request failed - no data returned');
       }
     } catch (err) {
       console.error('Error requesting ride:', err);
@@ -223,6 +572,26 @@ export default function Home() {
     setBottomSheetOpen(true);
   };
 
+  const handleClearStuckRide = () => {
+    console.log('🧹 Clearing stuck active ride:', activeRideId);
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('activeRideId');
+    }
+    setActiveRideId(null);
+    setLocalRideData(null);
+    setPickup(null);
+    setDropoff(null);
+    setPickupAddress('');
+    setDropoffAddress('');
+    setRoute(null);
+    setFare(null);
+    setRiderLocation(null);
+    setMode('pickup');
+    stopPolling();
+    setBottomSheetOpen(true);
+    showNotification('🧹 Cleared', 'Active ride has been cleared. You can now book a new ride.');
+  };
+
   const handleLogout = async () => {
     try {
       await signOut(auth);
@@ -232,14 +601,14 @@ export default function Home() {
     }
   };
 
-  // Calculate fare with vehicle multiplier
-  const getVehicleFare = useCallback((vehicleId) => {
-    const vehicle = VEHICLE_OPTIONS.find(v => v.id === vehicleId);
-    if (!fare || !vehicle) return null;
-    return (parseFloat(fare) * vehicle.multiplier).toFixed(2);
-  }, [fare]);
-
-  const ride = rideData?.ride;
+  const ride = rideData?.ride || localRideData; // Use local data as fallback for mock Firestore
+  
+  // Debug logging
+  useEffect(() => {
+    console.log('🔍 State update - activeRideId:', activeRideId);
+    console.log('🔍 State update - rideData:', rideData);
+    console.log('🔍 State update - ride:', ride);
+  }, [activeRideId, rideData, ride]);
 
   if (loadingAuth) {
     return (
@@ -345,13 +714,15 @@ export default function Home() {
       )}
 
       {/* Full screen map */}
-      <div className="absolute inset-0" onClick={handleMapClick}>
+      <div className="absolute inset-0">
         <DeliverMiMap
           orders={[]}
           pickup={pickup}
           dropoff={dropoff}
           riderLocation={riderLocation}
           route={route}
+          rideStatus={ride?.status}
+          onClick={handleMapClick}
         />
       </div>
 
@@ -375,86 +746,31 @@ export default function Home() {
 
         <div className="overflow-y-auto px-4 pb-6" style={{ maxHeight: 'calc(85vh - 60px)' }}>
           {activeRideId && ride ? (
-            <div className="space-y-4">
-              <div className="flex justify-between items-center">
-                <div>
-                  <h1 className="text-2xl font-bold">Ride #{ride.rideId}</h1>
-                  <p className="text-sm text-gray-500 mt-1">Status: {ride.status}</p>
-                </div>
-                <span className={`px-4 py-2 rounded-full text-sm font-bold ${
-                  ride.status === 'COMPLETED' ? 'bg-green-100 text-green-800' :
-                  ride.status === 'ACCEPTED' ? 'bg-blue-100 text-blue-800' :
-                  ride.status === 'PICKED_UP' ? 'bg-yellow-100 text-yellow-800' :
-                  'bg-gray-100 text-gray-800'
-                }`}>
-                  {ride.status}
-                </span>
-              </div>
-
-              {ride.rider ? (
-                <div className="p-4 bg-green-50 rounded-2xl border border-green-100">
-                  <div className="flex items-center gap-3 mb-2">
-                    <div className="w-12 h-12 bg-green-500 rounded-full flex items-center justify-center">
-                      <span className="text-white text-xl">✓</span>
-                    </div>
-                    <div>
-                      <p className="font-bold text-green-800">Rider Found!</p>
-                      <p className="text-sm text-green-700">{ride.rider.displayName || 'Your Driver'} is on the way</p>
-                    </div>
-                  </div>
-                  {ride.rider.phoneNumber && (
-                    <a 
-                      href={`tel:${ride.rider.phoneNumber}`}
-                      className="inline-flex items-center gap-2 text-sm text-blue-600 mt-2 font-medium"
-                    >
-                      📞 {ride.rider.phoneNumber}
-                    </a>
-                  )}
-                  {riderLocation && route && (
-                    <div className="mt-3 pt-3 border-t border-green-200">
-                      <p className="text-xs text-gray-600">
-                        ETA: {route.durationMin} min • {route.distanceKm} km away
-                      </p>
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <div className="p-4 bg-blue-50 rounded-2xl border border-blue-100">
-                  <div className="flex items-center gap-3">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-                    <p className="text-blue-800 font-medium">Finding a driver nearby...</p>
-                  </div>
-                </div>
-              )}
-
-              <div className="space-y-3">
-                <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-xl">
-                  <div className="w-8 h-8 bg-black rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
-                    <span className="text-white text-xs">📍</span>
-                  </div>
-                  <div className="flex-1">
-                    <p className="text-xs text-gray-500 mb-1">Pickup</p>
-                    <p className="text-sm font-medium">{ride.pickupAddress}</p>
-                  </div>
-                </div>
-
-                <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-xl">
-                  <div className="w-8 h-8 bg-red-500 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
-                    <span className="text-white text-xs">🏁</span>
-                  </div>
-                  <div className="flex-1">
-                    <p className="text-xs text-gray-500 mb-1">Dropoff</p>
-                    <p className="text-sm font-medium">{ride.dropoffAddress}</p>
-                  </div>
-                </div>
-              </div>
-
+            <ActiveRideView 
+              ride={ride}
+              riderLocation={riderLocation}
+              onCancel={handleCancelRide}
+              onBookAnotherRide={handleBookAnotherRide}
+              showRating={!showRatingModal && riderToRate !== null}
+              onRateRider={() => setShowRatingModal(true)}
+            />
+          ) : activeRideId && !ride ? (
+            // Active ride ID exists but no ride data - likely stuck
+            <div className="py-8 text-center">
+              <div className="text-6xl mb-4">⚠️</div>
+              <h2 className="text-xl font-bold text-gray-900 mb-2">Stuck Ride Detected</h2>
+              <p className="text-gray-600 mb-6">
+                You have an active ride ID but no ride data is loading. This may happen if the ride was completed elsewhere or there's a sync issue.
+              </p>
               <button
-                onClick={handleCancelRide}
-                className="w-full py-4 bg-gray-100 text-gray-800 rounded-xl font-bold hover:bg-gray-200 transition-colors"
+                onClick={handleClearStuckRide}
+                className="w-full bg-red-500 hover:bg-red-600 text-white font-semibold py-4 px-6 rounded-xl transition-colors"
               >
-                Cancel Ride
+                Clear Stuck Ride & Start Fresh
               </button>
+              <p className="text-xs text-gray-500 mt-4">
+                Active Ride ID: {activeRideId}
+              </p>
             </div>
           ) : (
             <>
@@ -462,7 +778,38 @@ export default function Home() {
               
               <div className="space-y-4">
                 <div>
-                  <label className="block text-xs text-gray-500 mb-2 font-medium">Pickup Location</label>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="block text-xs text-gray-500 font-medium">Pickup Location</label>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => {
+                          if (riderLocation) {
+                            setPickup(riderLocation);
+                            setPickupAddress('Current Location');
+                            setMode('dropoff');
+                            setRoute(null);
+                          }
+                        }}
+                        className="text-xs bg-blue-50 text-blue-600 hover:bg-blue-100 px-2 py-1 rounded font-medium"
+                        title="Use your current location as pickup"
+                      >
+                        📍 Use Current
+                      </button>
+                      {pickup && (
+                        <button
+                          onClick={() => {
+                            setPickup(null);
+                            setPickupAddress('');
+                            setMode('pickup');
+                            setRoute(null);
+                          }}
+                          className="text-xs text-blue-600 hover:text-blue-800 font-medium"
+                        >
+                          Change
+                        </button>
+                      )}
+                    </div>
+                  </div>
                   <AddressSearch
                     value={pickupAddress}
                     onChange={(address) => setPickupAddress(address)}
@@ -471,8 +818,8 @@ export default function Home() {
                       setPickupAddress(location.address);
                       setMode('dropoff');
                       setRoute(null);
-                      setFare(null);
                     }}
+                    onFocus={() => setMode('pickup')}
                     placeholder="Search pickup address or tap map"
                   />
                   {pickup && !pickupAddress && (
@@ -483,7 +830,37 @@ export default function Home() {
                 </div>
 
                 <div>
-                  <label className="block text-xs text-gray-500 mb-2 font-medium">Dropoff Location</label>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="block text-xs text-gray-500 font-medium">Dropoff Location</label>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => {
+                          if (riderLocation) {
+                            setDropoff(riderLocation);
+                            setDropoffAddress('Current Location');
+                            setRoute(null);
+                          }
+                        }}
+                        className="text-xs bg-blue-50 text-blue-600 hover:bg-blue-100 px-2 py-1 rounded font-medium"
+                        title="Use your current location as dropoff"
+                      >
+                        📍 Use Current
+                      </button>
+                      {dropoff && (
+                        <button
+                          onClick={() => {
+                            setDropoff(null);
+                            setDropoffAddress('');
+                            setMode('dropoff');
+                            setRoute(null);
+                          }}
+                          className="text-xs text-blue-600 hover:text-blue-800 font-medium"
+                        >
+                          Change
+                        </button>
+                      )}
+                    </div>
+                  </div>
                   <AddressSearch
                     value={dropoffAddress}
                     onChange={(address) => setDropoffAddress(address)}
@@ -491,8 +868,8 @@ export default function Home() {
                       setDropoff(location);
                       setDropoffAddress(location.address);
                       setRoute(null);
-                      setFare(null);
                     }}
+                    onFocus={() => setMode('dropoff')}
                     placeholder="Search dropoff address or tap map"
                   />
                   {dropoff && !dropoffAddress && (
@@ -502,39 +879,8 @@ export default function Home() {
                   )}
                 </div>
 
-                {/* Vehicle Selection */}
-                {route && fare && (
-                  <div>
-                    <label className="block text-xs text-gray-500 mb-2 font-medium">Choose your ride</label>
-                    <div className="space-y-2">
-                      {VEHICLE_OPTIONS.map((vehicle) => (
-                        <button
-                          key={vehicle.id}
-                          onClick={() => setSelectedVehicle(vehicle.id)}
-                          className={`w-full p-3 rounded-xl border-2 flex items-center justify-between transition-colors ${
-                            selectedVehicle === vehicle.id 
-                              ? 'border-black bg-gray-50' 
-                              : 'border-gray-200 hover:border-gray-300'
-                          }`}
-                        >
-                          <div className="flex items-center gap-3">
-                            <span className="text-2xl">{vehicle.icon}</span>
-                            <div className="text-left">
-                              <p className="font-medium">{vehicle.name}</p>
-                              <p className="text-xs text-gray-500">
-                                {route.durationMin} min {vehicle.eta}
-                              </p>
-                            </div>
-                          </div>
-                          <span className="font-bold">${getVehicleFare(vehicle.id)}</span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
                 {/* Route Info */}
-                {route && (
+                {route && fare && (
                   <div className="p-4 bg-blue-50 rounded-xl border border-blue-100">
                     <div className="flex justify-between items-center mb-2">
                       <span className="text-sm text-gray-600">Distance:</span>
@@ -547,6 +893,16 @@ export default function Home() {
                   </div>
                 )}
 
+                {/* Debug info */}
+                <div className="p-3 bg-yellow-50 rounded-lg text-xs space-y-1 border border-yellow-200">
+                  <p className="font-bold text-yellow-900">Debug Info:</p>
+                  <p>Pickup: {pickup ? '✓ Set' : '✗ Not set'}</p>
+                  <p>Dropoff: {dropoff ? '✓ Set' : '✗ Not set'}</p>
+                  <p>Fare: {fare ? `₦${fare}` : '✗ Not calculated'}</p>
+                  <p>User: {user ? '✓ Logged in' : '✗ Not logged in'}</p>
+                  <p>Button state: {!pickup || !dropoff || requesting || !fare ? 'DISABLED' : 'ENABLED'}</p>
+                </div>
+
                 {error && (
                   <div className="p-3 bg-red-50 border border-red-200 rounded-xl">
                     <p className="text-sm text-red-800">{error}</p>
@@ -554,17 +910,23 @@ export default function Home() {
                 )}
 
                 <button
-                  onClick={handleRequestRide}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    console.log('🖱️ BUTTON CLICK EVENT FIRED!');
+                    handleRequestRide();
+                  }}
                   disabled={!pickup || !dropoff || requesting || !fare}
                   className="w-full py-4 bg-black text-white rounded-xl font-bold text-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-800 transition-colors shadow-lg"
+                  title={!pickup ? 'Select pickup location' : !dropoff ? 'Select dropoff location' : !fare ? 'Calculating fare...' : 'Click to request'}
                 >
                   {requesting ? (
                     <span className="flex items-center justify-center gap-2">
                       <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-                      Requesting...
+                      Requesting Dispatch...
                     </span>
                   ) : fare ? (
-                    `Request ${selectedVehicleData.name} - $${getVehicleFare(selectedVehicle)}`
+                    `Request Dispatch - ₦${parseFloat(fare).toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
                   ) : (
                     'Calculating fare...'
                   )}
@@ -574,6 +936,52 @@ export default function Home() {
           )}
         </div>
       </div>
+
+      {/* Customer Delivery Confirmation */}
+      {(() => {
+        const ride = rideData?.ride || localRideData;
+        console.log('🔍 Checking CustomerDeliveryConfirmation conditions:', {
+          activeRideId,
+          hasRideData: !!ride,
+          rideStatus: ride?.status,
+          rideId: ride?.id || ride?.rideId,
+          shouldShow: activeRideId && ride
+        });
+        return activeRideId && ride ? (
+          <CustomerDeliveryConfirmation 
+            activeRide={ride} 
+            onProvideCode={async (code) => {
+              try {
+                console.log('💾 Saving customer confirmation code:', code);
+                await setDeliveryCode({
+                  variables: {
+                    rideId: ride.rideId || ride.id,
+                    code: code
+                  }
+                });
+                console.log('✅ Delivery code saved successfully');
+                showNotification('✅ Code Saved', `Give code ${code} to your rider to complete delivery`);
+              } catch (error) {
+                console.error('❌ Failed to save delivery code:', error);
+                showNotification('❌ Error', 'Failed to save code. Please try again.');
+              }
+            }}
+            isLoading={false}
+          />
+        ) : null;
+      })()}
+      
+      {/* Rating Modal */}
+      <RatingModal
+        isOpen={showRatingModal}
+        onClose={() => {
+          setShowRatingModal(false);
+          setRiderToRate(null);
+        }}
+        onSubmit={handleSubmitRating}
+        riderId={riderToRate?.id}
+        riderName={riderToRate?.name}
+      />
     </div>
   );
 }
