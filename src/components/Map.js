@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import Map, { Marker, NavigationControl, GeolocateControl, Source, Layer } from 'react-map-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 
@@ -17,6 +17,55 @@ export default function DeliverMiMap(props) {
     const mapRef = useRef(null);
     const mapboxToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
 
+    const formatGeoError = useCallback((geoError) => {
+        if (!geoError) return 'Unable to get your location';
+        switch (geoError.code) {
+            case 1:
+                return 'Location permission denied. Please enable location services for DeliverMi.';
+            case 2:
+                return 'Location unavailable. Check your network or try again.';
+            case 3:
+                return 'Location request timed out. Please try again.';
+            default:
+                return 'Unable to get your location';
+        }
+    }, []);
+
+    const requestLocation = useCallback(() => {
+        if (typeof window === 'undefined') return;
+
+        if (!window.isSecureContext) {
+            setError('Location blocked because this page is not served over HTTPS. Open the secure URL and allow location.');
+            return;
+        }
+
+        if (!navigator.geolocation) {
+            setError('Geolocation not supported on this device.');
+            return;
+        }
+
+        navigator.geolocation.getCurrentPosition(
+            (position) => {
+                setViewState(prev => ({
+                    ...prev,
+                    latitude: position.coords.latitude,
+                    longitude: position.coords.longitude,
+                    zoom: 14
+                }));
+                setError(null);
+            },
+            (geoError) => {
+                console.error('Error getting location:', geoError);
+                setError(formatGeoError(geoError));
+            },
+            {
+                enableHighAccuracy: true,
+                timeout: 10000,
+                maximumAge: 10000
+            }
+        );
+    }, [formatGeoError]);
+
     useEffect(() => {
         if (pickup) {
             setViewState(prev => ({
@@ -25,23 +74,11 @@ export default function DeliverMiMap(props) {
                 longitude: pickup.lng,
                 zoom: 14
             }));
-        } else if (navigator.geolocation) {
-            navigator.geolocation.getCurrentPosition(
-                (position) => {
-                    setViewState(prev => ({
-                        ...prev,
-                        latitude: position.coords.latitude,
-                        longitude: position.coords.longitude,
-                        zoom: 14
-                    }));
-                },
-                (error) => {
-                    console.error('Error getting location:', error);
-                    setError('Unable to get your location');
-                }
-            );
+            return;
         }
-    }, [pickup]);
+
+        requestLocation();
+    }, [pickup, requestLocation]);
 
     // Fit bounds when both pickup and dropoff are set
     useEffect(() => {
@@ -97,6 +134,8 @@ export default function DeliverMiMap(props) {
                 
                 <GeolocateControl 
                     position="top-right"
+                    trackUserLocation
+                    showAccuracyCircle={false}
                     onGeolocate={(e) => {
                         setViewState(prev => ({
                             ...prev,
@@ -104,7 +143,9 @@ export default function DeliverMiMap(props) {
                             longitude: e.coords.longitude,
                             zoom: 14
                         }));
+                        setError(null);
                     }}
+                    onError={(geoError) => setError(formatGeoError(geoError))}
                 />
 
                 {/* Route line */}
@@ -224,7 +265,16 @@ export default function DeliverMiMap(props) {
             {/* Error overlay */}
             {error && (
                 <div className="absolute top-4 left-4 right-4 bg-red-50 border border-red-200 text-red-800 p-3 rounded-lg text-sm shadow-lg z-50">
-                    ⚠️ {error}
+                    <div className="flex items-center justify-between gap-2">
+                        <span>⚠️ {error}</span>
+                        <button
+                            type="button"
+                            className="text-red-700 text-xs font-semibold underline"
+                            onClick={requestLocation}
+                        >
+                            Retry
+                        </button>
+                    </div>
                 </div>
             )}
 
