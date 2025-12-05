@@ -14,6 +14,7 @@ export default function DeliverMiMap(props) {
     });
 
     const [error, setError] = useState(null);
+    const [permissionState, setPermissionState] = useState(null);
     const mapRef = useRef(null);
     const mapboxToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
 
@@ -80,6 +81,23 @@ export default function DeliverMiMap(props) {
         requestLocation();
     }, [pickup, requestLocation]);
 
+    // Track browser permission state so we can prompt the user clearly
+    useEffect(() => {
+        let permissionHandle;
+        if (navigator.permissions && navigator.permissions.query) {
+            navigator.permissions.query({ name: 'geolocation' }).then((result) => {
+                setPermissionState(result.state);
+                permissionHandle = result;
+                result.onchange = () => setPermissionState(result.state);
+            }).catch(() => {
+                setPermissionState(null);
+            });
+        }
+        return () => {
+            if (permissionHandle) permissionHandle.onchange = null;
+        };
+    }, []);
+
     // Fit bounds when both pickup and dropoff are set
     useEffect(() => {
         if (pickup && dropoff && mapRef.current) {
@@ -127,6 +145,19 @@ export default function DeliverMiMap(props) {
                 touchZoomRotate
                 doubleClickZoom={false}
             >
+                {/* Quick CTA to request permission when it is denied or not yet granted */}
+                {(permissionState === 'denied' || permissionState === 'prompt') && (
+                    <div className="absolute top-3 left-3 z-50">
+                        <button
+                            type="button"
+                            onClick={requestLocation}
+                            className="bg-white text-gray-900 border border-gray-200 shadow-md px-3 py-2 rounded text-xs font-semibold"
+                        >
+                            Enable location access
+                        </button>
+                    </div>
+                )}
+
                 {/* Navigation controls - hidden on mobile */}
                 <div className="hidden md:block">
                     <NavigationControl position="bottom-right" showCompass={false} />
