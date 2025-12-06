@@ -168,31 +168,37 @@ export default function ActiveRideView({
         </div>
       </div>
 
-      {/* Trip Summary */}
-      <div className="bg-gradient-to-br from-blue-50 to-purple-50 border-2 border-blue-200 rounded-2xl p-4 shadow-sm">
-        <div className="grid grid-cols-3 gap-4 mb-4">
+      {/* Trip Summary - Uber/Bolt Style */}
+      <div className="bg-gradient-to-br from-blue-50 to-purple-50 border-2 border-blue-200 rounded-2xl p-5 shadow-sm">
+        {/* Centralized Fare with KM and Min on sides */}
+        <div className="flex items-end justify-center gap-6 mb-4">
+          {/* Distance - Left */}
           {ride.distance && (
-            <div className="text-center">
-              <p className="text-2xl font-bold text-blue-600">
+            <div className="flex flex-col items-center">
+              <p className="text-lg font-bold text-blue-600">
                 {(ride.distance / 1000).toFixed(1)}
               </p>
-              <p className="text-xs text-gray-600 font-medium">km</p>
+              <p className="text-[10px] text-gray-500 font-medium uppercase">km</p>
             </div>
           )}
-          {ride.duration && (
-            <div className="text-center">
-              <p className="text-2xl font-bold text-purple-600">
-                {Math.round(ride.duration / 60)}
-              </p>
-              <p className="text-xs text-gray-600 font-medium">min</p>
-            </div>
-          )}
-          <div className="text-center">
-            <p className="text-2xl font-bold text-green-600">
+          
+          {/* Fare - Center (Prominent) */}
+          <div className="flex flex-col items-center">
+            <p className="text-3xl font-bold text-green-600">
               ₦{ride.fare?.toLocaleString('en-NG') || 'N/A'}
             </p>
-            <p className="text-xs text-gray-600 font-medium">fare</p>
+            <p className="text-xs text-gray-600 font-medium">Total Fare</p>
           </div>
+          
+          {/* Duration - Right */}
+          {ride.duration && (
+            <div className="flex flex-col items-center">
+              <p className="text-lg font-bold text-purple-600">
+                {Math.round(ride.duration / 60)}
+              </p>
+              <p className="text-[10px] text-gray-500 font-medium uppercase">min</p>
+            </div>
+          )}
         </div>
 
         {ride.status === 'COMPLETED' && (

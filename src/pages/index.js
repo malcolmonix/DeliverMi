@@ -132,7 +132,8 @@ export default function Home() {
     }
   });
 
-  // Validate ride existence with multiple retries before clearing
+  // UBER/BOLT APPROACH: Never auto-clear rides client-side. Only server can end a ride.
+  // This prevents "stuck ride" issues from network glitches while ensuring data integrity.
   useEffect(() => {
     if (!activeRideId) {
       setRideMissingCount(0);
@@ -140,30 +141,27 @@ export default function Home() {
       return;
     }
 
-    // If we have more than 5 consecutive misses, validate against myRides
+    // Log missing polls for debugging but NEVER auto-clear
     if (rideMissingCount >= 5) {
-      console.warn('⚠️ Ride missing for 5+ consecutive polls');
+      console.warn('⚠️ Ride temporarily unreachable for 5+ consecutive polls');
+      console.log('📊 Debug info:', {
+        activeRideId,
+        inMyRides: !!activeRideFromMyRides,
+        validated: rideValidated,
+        localData: !!localRideData
+      });
       
-      // Check if ride exists in myRides as fallback
+      // Reset counter to keep trying - ride persists until server confirms completion
+      setRideMissingCount(0);
+      
+      // Use myRides data as fallback if available
       if (activeRideFromMyRides && activeRideFromMyRides.id === activeRideId) {
-        console.log('✅ Ride still exists in myRides, resetting miss counter');
-        setRideMissingCount(0);
+        console.log('✅ Using myRides data as fallback');
         setLocalRideData(activeRideFromMyRides);
         setRideValidated(true);
-        return;
-      }
-
-      // If ride is not validated and not in myRides, it's truly gone
-      if (!rideValidated) {
-        console.error('🧹 Ride confirmed missing from both queries, clearing stuck ride');
-        setActiveRideId(null);
-        localStorage.removeItem('activeRideId');
-        setLocalRideData(null);
-        setRoute(null);
-        setRideMissingCount(0);
       }
     }
-  }, [rideMissingCount, activeRideFromMyRides, activeRideId, rideValidated]);
+  }, [rideMissingCount, activeRideFromMyRides, activeRideId, rideValidated, localRideData]);
 
   // Real-time rider location tracking from Firestore
   useEffect(() => {
@@ -247,6 +245,7 @@ export default function Home() {
   }, [activeRideId, rideData?.ride?.riderId, localRideData?.riderId]);
 
   // Real-time ride status tracking from Firestore (PRIMARY SOURCE OF TRUTH)
+  // UBER/BOLT PATTERN: Server is authoritative. Client only displays and never deletes.
   useEffect(() => {
     if (!activeRideId) return;
 
@@ -273,9 +272,9 @@ export default function Home() {
           // Refetch GraphQL to ensure consistency
           refetch();
           
-          // Handle ride completion
+          // ONLY clear ride when server confirms it's finished
           if (data.status === 'COMPLETED' || data.status === 'CANCELLED') {
-            console.log('✅ Ride finished with status:', data.status);
+            console.log('✅ SERVER CONFIRMED: Ride finished with status:', data.status);
             
             // Show rating modal on completion
             if (previousRideStatus !== 'COMPLETED' && data.status === 'COMPLETED') {
@@ -290,20 +289,32 @@ export default function Home() {
             }
             
             setPreviousRideStatus(data.status);
+            
+            // Clear ride from localStorage only after server confirmation
+            // Give user time to rate before fully clearing
+            if (!showRatingModal) {
+              setTimeout(() => {
+                console.log('🧹 Clearing completed ride from storage');
+                setActiveRideId(null);
+                localStorage.removeItem('activeRideId');
+                setLocalRideData(null);
+              }, 3000);
+            }
           }
         } else {
-          console.warn('⚠️ Firestore document does not exist for ride:', activeRideId);
-          // Document doesn't exist - may have been deleted
-          setRideMissingCount(count => count + 1);
+          // Document missing - but DON'T clear. Log and retry.
+          console.warn('⚠️ Firestore document temporarily unavailable for ride:', activeRideId);
+          console.log('⏳ Will retry via polling. Ride persists until server confirms completion.');
         }
       },
       (error) => {
         if (error.code === 'permission-denied') {
           console.error('🔐 Permission denied for ride status listener');
+          console.log('📱 User may need to re-authenticate');
         } else {
           console.error('❌ Error listening to ride status:', error);
+          console.log('⏳ Will retry. Network issue does not delete ride.');
         }
-        setRideMissingCount(count => count + 1);
       }
     );
 
@@ -311,7 +322,7 @@ export default function Home() {
       console.log('🔌 Unsubscribing from Firestore ride status listener');
       unsubscribe();
     };
-  }, [activeRideId, refetch, previousRideStatus]);
+  }, [activeRideId, refetch, previousRideStatus, showRatingModal]);
 
   // Persist activeRideId to localStorage
   useEffect(() => {
@@ -818,10 +829,10 @@ export default function Home() {
         />
       </div>
 
-      {/* Bottom Sheet */}
+      {/* Bottom Sheet - Anchored for visibility */}
       <div 
         className={`fixed bottom-0 left-0 right-0 bg-white rounded-t-3xl shadow-2xl z-50 transition-transform duration-300 ease-out ${
-          bottomSheetOpen ? 'translate-y-0' : 'translate-y-[calc(100%-60px)]'
+          bottomSheetOpen ? 'translate-y-0' : 'translate-y-[calc(100%-120px)]'
         }`}
         style={{ 
           maxHeight: '85vh',
