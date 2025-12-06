@@ -64,7 +64,7 @@ export default function CustomerDeliveryConfirmation({ activeRide, onProvideCode
     <>
       {/* Delivery Confirmation - Persistent floating panel that collapses to visible header */}
       <div
-        className={`fixed bottom-0 left-0 right-0 bg-purple-50 border-t-4 border-purple-500 shadow-2xl transition-all duration-300 ease-in-out z-40`}
+        className={`fixed bottom-0 left-0 right-0 bg-purple-50 border-t-4 border-purple-500 shadow-2xl transition-all duration-300 ease-in-out z-[60]`}
         style={{
           borderTopLeftRadius: '24px',
           borderTopRightRadius: '24px',

@@ -44,6 +44,8 @@ export default function Home() {
   const [previousRideStatus, setPreviousRideStatus] = useState(null);
   const [showRatingModal, setShowRatingModal] = useState(false);
   const [riderToRate, setRiderToRate] = useState(null);
+  const [rideMissingCount, setRideMissingCount] = useState(0); // Avoid clearing on transient errors
+  const [rideValidated, setRideValidated] = useState(false); // Track if ride has been validated from server
   const fareCalculated = useRef(false);
 
   const [requestRide, { loading: requesting }] = useMutation(REQUEST_RIDE);
@@ -51,8 +53,9 @@ export default function Home() {
   const [setDeliveryCode] = useMutation(SET_DELIVERY_CODE);
 
   // Query to get user's rides and check for active ones
-  const { data: myRidesData } = useQuery(GET_MY_RIDES, {
+  const { data: myRidesData, refetch: refetchMyRides } = useQuery(GET_MY_RIDES, {
     skip: !user,
+    pollInterval: user ? 10000 : 0, // Poll every 10s to detect server-side changes
     onCompleted: (data) => {
       // Check if user has an active ride and restore it
       if (data?.myRides && !activeRideId) {
@@ -60,38 +63,107 @@ export default function Home() {
           r.status !== 'COMPLETED' && r.status !== 'CANCELLED'
         );
         if (activeRide) {
-          console.log('🔄 Restoring active ride:', activeRide.id);
+          console.log('🔄 Restoring active ride from myRides:', activeRide.id);
           setActiveRideId(activeRide.id);
+          setLocalRideData(activeRide);
+          setRideValidated(true);
           localStorage.setItem('activeRideId', activeRide.id);
           setBottomSheetOpen(true);
+        }
+      }
+      
+      // Validate existing activeRideId against myRides
+      if (activeRideId && data?.myRides) {
+        const currentRide = data.myRides.find(r => r.id === activeRideId);
+        if (currentRide) {
+          setRideValidated(true);
+          // Update status if changed
+          if (currentRide.status === 'COMPLETED' || currentRide.status === 'CANCELLED') {
+            console.log('✅ Ride completed/cancelled, will clear after rating');
+          }
+        } else {
+          console.warn('⚠️ Active ride not found in myRides, marking as invalid');
+          setRideValidated(false);
         }
       }
     }
   });
 
+  const activeRideFromMyRides = useMemo(() => {
+    return myRidesData?.myRides?.find(r => r.status !== 'COMPLETED' && r.status !== 'CANCELLED') || null;
+  }, [myRidesData?.myRides]);
+
   const { data: rideData, startPolling, stopPolling, refetch } = useQuery(GET_RIDE_STATUS, {
     variables: { id: activeRideId || '' },  // Provide empty string if null to prevent GraphQL errors
     skip: !activeRideId || !user,  // Skip if no active ride OR not authenticated
-    pollInterval: activeRideId && user ? 3000 : 0,  // Only poll when we have both
+    pollInterval: activeRideId && user ? 5000 : 0,  // Poll every 5s for better UX
+    fetchPolicy: 'network-only', // Always fetch fresh data
     onCompleted: (data) => {
       console.log('📊 GET_RIDE_STATUS query completed:', data);
-      // If ride doesn't exist, clear it
       if (!data?.ride) {
-        console.warn('⚠️ Ride not found, clearing from localStorage');
-        setActiveRideId(null);
-        localStorage.removeItem('activeRideId');
+        console.warn('⚠️ Ride not found via direct query, will cross-check with myRides');
+        setRideMissingCount(count => count + 1);
+        // Trigger myRides refetch to validate
+        refetchMyRides();
+        return;
+      }
+
+      // Reset missing counter on success and keep local fallback in sync
+      setRideMissingCount(0);
+      setRideValidated(true);
+      setLocalRideData(data.ride);
+      
+      // Auto-clear completed/cancelled rides after a delay
+      if (data.ride.status === 'COMPLETED' || data.ride.status === 'CANCELLED') {
+        console.log('🏁 Ride finished, will prompt for rating then clear');
       }
     },
     onError: (error) => {
       console.error('❌ GET_RIDE_STATUS query error:', error);
-      // If the ride query fails (ride not found or invalid), clear the active ride
-      if (error.message?.includes('400') || error.message?.includes('not found') || error.message?.includes('Authentication')) {
-        console.warn('⚠️ Clearing invalid active ride ID from localStorage');
+      // Only increment the missing counter; avoid clearing on transient errors
+      setRideMissingCount(count => count + 1);
+      
+      // If authentication error, clear the ride
+      if (error.message?.includes('Authentication')) {
+        console.error('🔐 Authentication error, clearing ride');
         setActiveRideId(null);
         localStorage.removeItem('activeRideId');
       }
     }
   });
+
+  // Validate ride existence with multiple retries before clearing
+  useEffect(() => {
+    if (!activeRideId) {
+      setRideMissingCount(0);
+      setRideValidated(false);
+      return;
+    }
+
+    // If we have more than 5 consecutive misses, validate against myRides
+    if (rideMissingCount >= 5) {
+      console.warn('⚠️ Ride missing for 5+ consecutive polls');
+      
+      // Check if ride exists in myRides as fallback
+      if (activeRideFromMyRides && activeRideFromMyRides.id === activeRideId) {
+        console.log('✅ Ride still exists in myRides, resetting miss counter');
+        setRideMissingCount(0);
+        setLocalRideData(activeRideFromMyRides);
+        setRideValidated(true);
+        return;
+      }
+
+      // If ride is not validated and not in myRides, it's truly gone
+      if (!rideValidated) {
+        console.error('🧹 Ride confirmed missing from both queries, clearing stuck ride');
+        setActiveRideId(null);
+        localStorage.removeItem('activeRideId');
+        setLocalRideData(null);
+        setRoute(null);
+        setRideMissingCount(0);
+      }
+    }
+  }, [rideMissingCount, activeRideFromMyRides, activeRideId, rideValidated]);
 
   // Real-time rider location tracking from Firestore
   useEffect(() => {
@@ -174,19 +246,22 @@ export default function Home() {
     };
   }, [activeRideId, rideData?.ride?.riderId, localRideData?.riderId]);
 
-  // Real-time ride status tracking from Firestore
+  // Real-time ride status tracking from Firestore (PRIMARY SOURCE OF TRUTH)
   useEffect(() => {
     if (!activeRideId) return;
 
-    console.log('Setting up real-time listener for ride status:', activeRideId);
+    console.log('🔥 Setting up Firestore real-time listener for ride:', activeRideId);
     
     const unsubscribe = onSnapshot(
       doc(db, 'customer-rides', activeRideId),
       (snapshot) => {
         if (snapshot.exists()) {
           const data = snapshot.data();
-          console.log('🔄 Ride status update from Firestore:', data);
-          console.log('🔔 riderRequestedCode flag:', data.riderRequestedCode);
+          console.log('🔄 Ride status update from Firestore:', data.status);
+          
+          // Mark ride as validated when we get Firestore data
+          setRideValidated(true);
+          setRideMissingCount(0);
           
           // Update local ride data with latest from Firestore
           setLocalRideData(prev => ({
@@ -198,17 +273,17 @@ export default function Home() {
           // Refetch GraphQL to ensure consistency
           refetch();
           
+          // Handle ride completion
           if (data.status === 'COMPLETED' || data.status === 'CANCELLED') {
             console.log('✅ Ride finished with status:', data.status);
             
-            // Store previous ride status to detect completion
+            // Show rating modal on completion
             if (previousRideStatus !== 'COMPLETED' && data.status === 'COMPLETED') {
-              // Show rating modal automatically
               const ride = rideData?.ride || localRideData;
-              if (ride && ride.rider) {
+              if (ride && (ride.rider || ride.riderId)) {
                 setRiderToRate({
-                  id: ride.rider.id || ride.riderId,
-                  name: ride.rider.displayName || 'Your Rider'
+                  id: ride.rider?.id || ride.riderId,
+                  name: ride.rider?.displayName || 'Your Rider'
                 });
                 setShowRatingModal(true);
               }
@@ -216,15 +291,27 @@ export default function Home() {
             
             setPreviousRideStatus(data.status);
           }
+        } else {
+          console.warn('⚠️ Firestore document does not exist for ride:', activeRideId);
+          // Document doesn't exist - may have been deleted
+          setRideMissingCount(count => count + 1);
         }
       },
       (error) => {
-        console.error('Error listening to ride status:', error);
+        if (error.code === 'permission-denied') {
+          console.error('🔐 Permission denied for ride status listener');
+        } else {
+          console.error('❌ Error listening to ride status:', error);
+        }
+        setRideMissingCount(count => count + 1);
       }
     );
 
-    return () => unsubscribe();
-  }, [activeRideId, refetch]);
+    return () => {
+      console.log('🔌 Unsubscribing from Firestore ride status listener');
+      unsubscribe();
+    };
+  }, [activeRideId, refetch, previousRideStatus]);
 
   // Persist activeRideId to localStorage
   useEffect(() => {
@@ -524,19 +611,23 @@ export default function Home() {
         }
       });
       
-      console.log('Ride request result:', result);
-      console.log('result.data:', result.data);
-      console.log('result.data.requestRide:', result.data?.requestRide);
+      console.log('✅ Ride request mutation completed:', result);
       
       if (result.data?.requestRide) {
-        console.log('✅ Setting active ride ID:', result.data.requestRide.id);
         const rideData = result.data.requestRide;
-        setActiveRideId(rideData.id);
-        setLocalRideData(rideData); // Store ride data locally for mock Firestore compatibility
+        console.log('🎉 New ride created:', rideData.id, 'Status:', rideData.status);
         
-        startPolling(3000);
+        setActiveRideId(rideData.id);
+        setLocalRideData(rideData);
+        setRideValidated(true);
+        setRideMissingCount(0);
+        localStorage.setItem('activeRideId', rideData.id);
+        
+        startPolling(5000);
         setBottomSheetOpen(true);
-        console.log('✅ Ride requested successfully!');
+        
+        // Trigger myRides refetch to sync
+        refetchMyRides();
       } else {
         console.error('❌ No requestRide data in result:', result);
         setError('Ride request failed - no data returned');
@@ -602,6 +693,7 @@ export default function Home() {
   };
 
   const ride = rideData?.ride || localRideData; // Use local data as fallback for mock Firestore
+  const arrivalConfirmationVisible = ride?.status === 'ARRIVED_AT_DROPOFF';
   
   // Debug logging
   useEffect(() => {
@@ -733,7 +825,7 @@ export default function Home() {
         }`}
         style={{ 
           maxHeight: '85vh',
-          minHeight: activeRideId ? '300px' : '400px'
+          minHeight: arrivalConfirmationVisible ? '180px' : (activeRideId ? '300px' : '400px')
         }}
       >
         {/* Drag handle */}
@@ -892,16 +984,6 @@ export default function Home() {
                     </div>
                   </div>
                 )}
-
-                {/* Debug info */}
-                <div className="p-3 bg-yellow-50 rounded-lg text-xs space-y-1 border border-yellow-200">
-                  <p className="font-bold text-yellow-900">Debug Info:</p>
-                  <p>Pickup: {pickup ? '✓ Set' : '✗ Not set'}</p>
-                  <p>Dropoff: {dropoff ? '✓ Set' : '✗ Not set'}</p>
-                  <p>Fare: {fare ? `₦${fare}` : '✗ Not calculated'}</p>
-                  <p>User: {user ? '✓ Logged in' : '✗ Not logged in'}</p>
-                  <p>Button state: {!pickup || !dropoff || requesting || !fare ? 'DISABLED' : 'ENABLED'}</p>
-                </div>
 
                 {error && (
                   <div className="p-3 bg-red-50 border border-red-200 rounded-xl">

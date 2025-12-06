@@ -16,7 +16,7 @@ export default function ActiveRideView({
           bg: 'bg-blue-50',
           border: 'border-blue-200',
           text: 'text-blue-800',
-          icon: '🔍',
+          icon: '🏍️',
           message: 'Finding a driver nearby...',
           description: 'This usually takes a few moments'
         };
@@ -26,7 +26,7 @@ export default function ActiveRideView({
           bg: 'bg-green-50',
           border: 'border-green-200',
           text: 'text-green-800',
-          icon: '✅',
+          icon: '🏍️',
           message: 'Driver is on the way to pickup!',
           description: 'Your driver is heading to your location'
         };
@@ -36,7 +36,7 @@ export default function ActiveRideView({
           bg: 'bg-orange-50',
           border: 'border-orange-200',
           text: 'text-orange-800',
-          icon: '📍',
+          icon: '🏍️',
           message: 'Driver has arrived at pickup!',
           description: 'Come out and meet your driver'
         };
@@ -46,7 +46,7 @@ export default function ActiveRideView({
           bg: 'bg-blue-50',
           border: 'border-blue-200',
           text: 'text-blue-800',
-          icon: '🚗',
+          icon: '🏍️',
           message: 'On the way to dropoff',
           description: 'Heading to the dropoff location'
         };
@@ -56,7 +56,7 @@ export default function ActiveRideView({
           bg: 'bg-purple-50',
           border: 'border-purple-200',
           text: 'text-purple-800',
-          icon: '🏁',
+          icon: '🏍️',
           message: 'Arrived at destination!',
           description: 'You have reached your destination'
         };
@@ -217,14 +217,6 @@ export default function ActiveRideView({
         </button>
       )}
       
-      {/* Cannot cancel after pickup */}
-      {(ride.status === 'PICKED_UP' || ride.status === 'ARRIVED_AT_DROPOFF') && (
-        <div className="w-full bg-gray-100 text-gray-600 py-4 rounded-xl font-medium text-center border-2 border-gray-300">
-          <div className="text-sm">🔒 Ride in progress - cannot cancel</div>
-          <div className="text-xs mt-1">Complete the ride to proceed</div>
-        </div>
-      )}
-
       {ride.status === 'COMPLETED' && (
         <div className="space-y-3">
           {showRating && (
