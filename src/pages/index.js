@@ -729,7 +729,7 @@ export default function Home() {
       {/* Bottom Sheet */}
       <div 
         className={`fixed bottom-0 left-0 right-0 bg-white rounded-t-3xl shadow-2xl z-50 transition-transform duration-300 ease-out ${
-          bottomSheetOpen ? 'translate-y-0' : 'translate-y-full'
+          bottomSheetOpen ? 'translate-y-0' : 'translate-y-[calc(100%-60px)]'
         }`}
         style={{ 
           maxHeight: '85vh',
@@ -738,7 +738,7 @@ export default function Home() {
       >
         {/* Drag handle */}
         <div 
-          className="flex justify-center pt-3 pb-2 cursor-grab active:cursor-grabbing"
+          className="flex justify-center pt-3 pb-2 cursor-grab active:cursor-grabbing sticky top-0 bg-white rounded-t-3xl z-10"
           onClick={() => setBottomSheetOpen(!bottomSheetOpen)}
         >
           <div className="w-12 h-1.5 bg-gray-300 rounded-full"></div>
