@@ -37,8 +37,8 @@ export default function ActiveRideView({
           border: 'border-orange-200',
           text: 'text-orange-800',
           icon: '📍',
-          message: 'Driver has arrived!',
-          description: 'Your driver is waiting for you'
+          message: 'Driver has arrived at pickup!',
+          description: 'Come out and meet your driver'
         };
       case 'PICKED_UP':
         return {
