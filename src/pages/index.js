@@ -59,7 +59,7 @@ export default function Home() {
     onCompleted: (data) => {
       // Check if user has an active ride and restore it
       if (data?.myRides && !activeRideId) {
-        const activeRide = data.myRides.find(r => 
+        const activeRide = data.myRides.find(r =>
           r.status !== 'COMPLETED' && r.status !== 'CANCELLED'
         );
         if (activeRide) {
@@ -71,7 +71,7 @@ export default function Home() {
           setBottomSheetOpen(true);
         }
       }
-      
+
       // Validate existing activeRideId against myRides
       if (activeRideId && data?.myRides) {
         const currentRide = data.myRides.find(r => r.id === activeRideId);
@@ -84,6 +84,11 @@ export default function Home() {
         } else {
           console.warn('⚠️ Active ride not found in myRides, marking as invalid');
           setRideValidated(false);
+
+          // IMMEDIATE FIX: If we have an active ride ID locally, but the server says we have NO matching active ride in our history,
+          // then the local ID is dead/zombie. Clear it immediately to unblock the user.
+          console.log('🧟 ZOMBIE RIDE CONFIRMED by myRides: Clearing immediately.');
+          handleClearStuckRide();
         }
       }
     }
@@ -112,7 +117,7 @@ export default function Home() {
       setRideMissingCount(0);
       setRideValidated(true);
       setLocalRideData(data.ride);
-      
+
       // Auto-clear completed/cancelled rides after a delay
       if (data.ride.status === 'COMPLETED' || data.ride.status === 'CANCELLED') {
         console.log('🏁 Ride finished, will prompt for rating then clear');
@@ -122,7 +127,7 @@ export default function Home() {
       console.error('❌ GET_RIDE_STATUS query error:', error);
       // Only increment the missing counter; avoid clearing on transient errors
       setRideMissingCount(count => count + 1);
-      
+
       // If authentication error, clear the ride
       if (error.message?.includes('Authentication')) {
         console.error('🔐 Authentication error, clearing ride');
@@ -141,27 +146,34 @@ export default function Home() {
       return;
     }
 
-    // Log missing polls for debugging but NEVER auto-clear
-    if (rideMissingCount >= 5) {
-      console.warn('⚠️ Ride temporarily unreachable for 5+ consecutive polls');
+    // Log missing polls for debugging
+    if (rideMissingCount >= 2) {
+      console.warn('⚠️ Ride unreachable for 2+ polls. Checking if zombie state...');
       console.log('📊 Debug info:', {
         activeRideId,
         inMyRides: !!activeRideFromMyRides,
-        validated: rideValidated,
-        localData: !!localRideData
+        myRidesLoaded: !!myRidesData,
+        validated: rideValidated
       });
-      
-      // Reset counter to keep trying - ride persists until server confirms completion
+
+      // Reset counter
       setRideMissingCount(0);
-      
-      // Use myRides data as fallback if available
+
+      // SELF-HEALING: If myRides has loaded and this ride is NOT in it (and not just network error), CLEAR IT.
+      if (myRidesData && !activeRideFromMyRides) {
+        console.warn('🧟 ZOMBIE RIDE DETECTED: Ride not found in user history. Clearing stuck state.');
+        handleClearStuckRide();
+        return;
+      }
+
+      // If myRides confirms it exists, we stick with it (server might be glitching specific query)
       if (activeRideFromMyRides && activeRideFromMyRides.id === activeRideId) {
-        console.log('✅ Using myRides data as fallback');
+        console.log('✅ MyRides confirms ride exists, using fallback data');
         setLocalRideData(activeRideFromMyRides);
         setRideValidated(true);
       }
     }
-  }, [rideMissingCount, activeRideFromMyRides, activeRideId, rideValidated, localRideData]);
+  }, [rideMissingCount, activeRideFromMyRides, activeRideId, rideValidated, localRideData, myRidesData]);
 
   // Real-time rider location tracking from Firestore
   useEffect(() => {
@@ -184,7 +196,7 @@ export default function Home() {
 
     console.log('🚗 Setting up real-time listener for rider location:', riderId);
     console.log('📍 Ride details:', { rideId: activeRideId, riderId, status: ride.status, hasLocation: !!ride.rider?.location });
-    
+
     const unsubscribe = onSnapshot(
       doc(db, 'rider-locations', riderId),
       (snapshot) => {
@@ -197,10 +209,10 @@ export default function Home() {
             speed: data.speed,
             timestamp: data.updatedAt || data.at
           });
-          
+
           const lat = data.latitude || data.lat;
           const lng = data.longitude || data.lng;
-          
+
           if (lat && lng) {
             const location = {
               lat: lat,
@@ -209,10 +221,10 @@ export default function Home() {
               speed: data.speed || 0,
               timestamp: data.updatedAt || data.at
             };
-            
+
             setRiderLocation(location);
             console.log('✅ Rider location updated on map with heading:', location.heading, 'degrees');
-            
+
             // Fit map to show both dropoff and rider when location updates
             if (dropoff) {
               try {
@@ -250,32 +262,32 @@ export default function Home() {
     if (!activeRideId) return;
 
     console.log('🔥 Setting up Firestore real-time listener for ride:', activeRideId);
-    
+
     const unsubscribe = onSnapshot(
       doc(db, 'customer-rides', activeRideId),
       (snapshot) => {
         if (snapshot.exists()) {
           const data = snapshot.data();
           console.log('🔄 Ride status update from Firestore:', data.status);
-          
+
           // Mark ride as validated when we get Firestore data
           setRideValidated(true);
           setRideMissingCount(0);
-          
+
           // Update local ride data with latest from Firestore
           setLocalRideData(prev => ({
             ...prev,
             ...data,
             id: activeRideId
           }));
-          
+
           // Refetch GraphQL to ensure consistency
           refetch();
-          
+
           // ONLY clear ride when server confirms it's finished
           if (data.status === 'COMPLETED' || data.status === 'CANCELLED') {
             console.log('✅ SERVER CONFIRMED: Ride finished with status:', data.status);
-            
+
             // Show rating modal on completion
             if (previousRideStatus !== 'COMPLETED' && data.status === 'COMPLETED') {
               const ride = rideData?.ride || localRideData;
@@ -287,9 +299,9 @@ export default function Home() {
                 setShowRatingModal(true);
               }
             }
-            
+
             setPreviousRideStatus(data.status);
-            
+
             // Clear ride from localStorage only after server confirmation
             // Give user time to rate before fully clearing
             if (!showRatingModal) {
@@ -362,7 +374,7 @@ export default function Home() {
 
     if (destination && destination.lat && destination.lng) {
       console.log('🗺️ Updating route from rider to destination:', { riderLocation, destination, status: ride.status });
-      
+
       getRoute(riderLocation, destination)
         .then(routeData => {
           setRoute(routeData.coordinates);
@@ -414,7 +426,7 @@ export default function Home() {
     if (!ride) return;
 
     const currentStatus = ride.status;
-    
+
     if (previousRideStatus && previousRideStatus !== currentStatus) {
       const statusNotifications = {
         'ACCEPTED': { title: '🚗 Driver Found!', body: 'Your driver is on the way to pickup' },
@@ -423,13 +435,13 @@ export default function Home() {
         'ARRIVED_AT_DROPOFF': { title: '📍 Almost There', body: 'You have arrived at your destination' },
         'COMPLETED': { title: '✅ Trip Completed', body: 'Thank you for using our service!' }
       };
-      
+
       const notif = statusNotifications[currentStatus];
       if (notif) {
         showNotification(notif.title, notif.body);
       }
     }
-    
+
     setPreviousRideStatus(currentStatus);
   }, [rideData?.ride?.status, localRideData?.status]);
 
@@ -464,7 +476,7 @@ export default function Home() {
       console.log('💰 Active ride ID:', activeRideId);
       fareCalculated.current = false; // Reset flag at start of calculation
       setFare(null); // Clear old fare
-      
+
       // Set a timeout to fallback to default fare if route takes too long
       const timeout = setTimeout(() => {
         if (!fareCalculated.current) {
@@ -473,7 +485,7 @@ export default function Home() {
           fareCalculated.current = true;
         }
       }, 3000); // 3 second timeout
-      
+
       getRoute(pickup, dropoff).then(routeData => {
         if (!fareCalculated.current) {
           clearTimeout(timeout);
@@ -500,7 +512,7 @@ export default function Home() {
           fareCalculated.current = true;
         }
       });
-      
+
       return () => clearTimeout(timeout);
     } else if (!pickup || !dropoff) {
       // Reset when either location is cleared
@@ -515,13 +527,13 @@ export default function Home() {
     console.log('🗺️ activeRideId:', activeRideId);
     console.log('🗺️ mode:', mode);
     console.log('🗺️ e.lngLat:', e.lngLat);
-    
+
     if (activeRideId) {
       console.log('❌ Click blocked - active ride exists:', activeRideId);
       showNotification('⚠️ Active Ride', 'Please complete or clear your current ride before booking a new one');
       return;
     }
-    
+
     // Check if event has lngLat (Mapbox event) or it's a DOM event
     if (!e.lngLat) {
       console.log('❌ Click blocked - no lngLat in event');
@@ -530,7 +542,7 @@ export default function Home() {
 
     const coords = { lat: e.lngLat.lat, lng: e.lngLat.lng };
     console.log('✅ Map click accepted! Coords:', coords);
-    
+
     if (mode === 'pickup') {
       console.log('📍 Setting PICKUP location:', coords);
       setPickup(coords);
@@ -578,7 +590,7 @@ export default function Home() {
   const handleRequestRide = async () => {
     console.log('🚀 handleRequestRide called - BUTTON CLICKED!');
     console.log('pickup:', pickup, 'dropoff:', dropoff, 'fare:', fare);
-    
+
     // Prevent booking if user already has an active ride
     if (activeRideId) {
       console.log('❌ User already has active ride:', activeRideId);
@@ -586,7 +598,7 @@ export default function Home() {
       showNotification('⚠️ Active Ride', 'You already have an active ride');
       return;
     }
-    
+
     if (!pickup || !dropoff) {
       console.log('❌ Missing pickup or dropoff');
       setError('Please select both pickup and dropoff locations');
@@ -621,22 +633,22 @@ export default function Home() {
           }
         }
       });
-      
+
       console.log('✅ Ride request mutation completed:', result);
-      
+
       if (result.data?.requestRide) {
         const rideData = result.data.requestRide;
         console.log('🎉 New ride created:', rideData.id, 'Status:', rideData.status);
-        
+
         setActiveRideId(rideData.id);
         setLocalRideData(rideData);
         setRideValidated(true);
         setRideMissingCount(0);
         localStorage.setItem('activeRideId', rideData.id);
-        
+
         startPolling(5000);
         setBottomSheetOpen(true);
-        
+
         // Trigger myRides refetch to sync
         refetchMyRides();
       } else {
@@ -705,7 +717,7 @@ export default function Home() {
 
   const ride = rideData?.ride || localRideData; // Use local data as fallback for mock Firestore
   const arrivalConfirmationVisible = ride?.status === 'ARRIVED_AT_DROPOFF';
-  
+
   // Debug logging
   useEffect(() => {
     console.log('🔍 State update - activeRideId:', activeRideId);
@@ -743,8 +755,8 @@ export default function Home() {
       {/* Side Menu */}
       {menuOpen && (
         <div className="fixed inset-0 z-[60]">
-          <div 
-            className="absolute inset-0 bg-black/50" 
+          <div
+            className="absolute inset-0 bg-black/50"
             onClick={() => setMenuOpen(false)}
           ></div>
           <div className="absolute left-0 top-0 bottom-0 w-80 bg-white shadow-2xl">
@@ -756,7 +768,7 @@ export default function Home() {
               <p className="text-white/70 text-sm">{user.email}</p>
             </div>
             <nav className="py-4">
-              <Link 
+              <Link
                 href="/"
                 className="flex items-center gap-4 px-6 py-4 hover:bg-gray-50"
                 onClick={() => setMenuOpen(false)}
@@ -764,7 +776,7 @@ export default function Home() {
                 <span className="text-2xl">🏠</span>
                 <span className="font-medium">Home</span>
               </Link>
-              <Link 
+              <Link
                 href="/rides"
                 className="flex items-center gap-4 px-6 py-4 hover:bg-gray-50"
                 onClick={() => setMenuOpen(false)}
@@ -772,7 +784,7 @@ export default function Home() {
                 <span className="text-2xl">🚗</span>
                 <span className="font-medium">My Rides</span>
               </Link>
-              <Link 
+              <Link
                 href="/payment"
                 className="flex items-center gap-4 px-6 py-4 hover:bg-gray-50"
                 onClick={() => setMenuOpen(false)}
@@ -780,7 +792,7 @@ export default function Home() {
                 <span className="text-2xl">💳</span>
                 <span className="font-medium">Payment</span>
               </Link>
-              <Link 
+              <Link
                 href="/promotions"
                 className="flex items-center gap-4 px-6 py-4 hover:bg-gray-50"
                 onClick={() => setMenuOpen(false)}
@@ -788,7 +800,7 @@ export default function Home() {
                 <span className="text-2xl">🎁</span>
                 <span className="font-medium">Promotions</span>
               </Link>
-              <Link 
+              <Link
                 href="/settings"
                 className="flex items-center gap-4 px-6 py-4 hover:bg-gray-50"
                 onClick={() => setMenuOpen(false)}
@@ -796,7 +808,7 @@ export default function Home() {
                 <span className="text-2xl">⚙️</span>
                 <span className="font-medium">Settings</span>
               </Link>
-              <Link 
+              <Link
                 href="/help"
                 className="flex items-center gap-4 px-6 py-4 hover:bg-gray-50"
                 onClick={() => setMenuOpen(false)}
@@ -804,7 +816,7 @@ export default function Home() {
                 <span className="text-2xl">❓</span>
                 <span className="font-medium">Help</span>
               </Link>
-              <button 
+              <button
                 onClick={handleLogout}
                 className="flex items-center gap-4 px-6 py-4 hover:bg-gray-50 w-full text-left text-red-600"
               >
@@ -830,18 +842,17 @@ export default function Home() {
       </div>
 
       {/* Bottom Sheet - Anchored for visibility */}
-      <div 
-        className={`fixed bottom-0 left-0 right-0 bg-white rounded-t-3xl shadow-2xl z-50 transition-transform duration-300 ease-out ${
-          bottomSheetOpen ? 'translate-y-0' : 'translate-y-[calc(100%-120px)]'
-        }`}
-        style={{ 
+      <div
+        className={`fixed bottom-0 left-0 right-0 bg-white rounded-t-3xl shadow-2xl z-50 transition-transform duration-300 ease-out ${bottomSheetOpen ? 'translate-y-0' : 'translate-y-[calc(100%-120px)]'
+          }`}
+        style={{
           maxHeight: '85vh',
           minHeight: arrivalConfirmationVisible ? '180px' : (activeRideId ? '300px' : '400px'),
           paddingBottom: '20px'
         }}
       >
         {/* Drag handle */}
-        <div 
+        <div
           className="flex justify-center pt-3 pb-2 cursor-grab active:cursor-grabbing sticky top-0 bg-white rounded-t-3xl z-10"
           onClick={() => setBottomSheetOpen(!bottomSheetOpen)}
         >
@@ -850,7 +861,7 @@ export default function Home() {
 
         <div className="overflow-y-auto px-4 pb-6" style={{ maxHeight: 'calc(85vh - 60px)' }}>
           {activeRideId && ride ? (
-            <ActiveRideView 
+            <ActiveRideView
               ride={ride}
               riderLocation={riderLocation}
               onCancel={handleCancelRide}
@@ -879,7 +890,7 @@ export default function Home() {
           ) : (
             <>
               <h1 className="text-2xl font-bold mb-4">Where to?</h1>
-              
+
               <div className="space-y-4">
                 <div>
                   <div className="flex items-center justify-between mb-2">
@@ -1042,8 +1053,8 @@ export default function Home() {
           shouldShow: activeRideId && ride
         });
         return activeRideId && ride ? (
-          <CustomerDeliveryConfirmation 
-            activeRide={ride} 
+          <CustomerDeliveryConfirmation
+            activeRide={ride}
             onProvideCode={async (code) => {
               try {
                 console.log('💾 Saving customer confirmation code:', code);
@@ -1064,7 +1075,7 @@ export default function Home() {
           />
         ) : null;
       })()}
-      
+
       {/* Rating Modal */}
       <RatingModal
         isOpen={showRatingModal}

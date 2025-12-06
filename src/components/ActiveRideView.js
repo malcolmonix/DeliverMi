@@ -1,10 +1,10 @@
-export default function ActiveRideView({ 
-  ride, 
-  riderLocation, 
-  onCancel, 
+export default function ActiveRideView({
+  ride,
+  riderLocation,
+  onCancel,
   onBookAnotherRide,
   showRating,
-  onRateRider 
+  onRateRider
 }) {
   if (!ride) return null;
 
@@ -99,7 +99,7 @@ export default function ActiveRideView({
             <p className="text-sm text-gray-600">{statusInfo.description}</p>
           </div>
         </div>
-        
+
         <div className="flex justify-between items-center mt-3 pt-3 border-t border-gray-200">
           <span className="text-sm text-gray-600">Ride ID</span>
           <span className="font-mono font-bold text-gray-800">#{ride.rideId}</span>
@@ -141,7 +141,7 @@ export default function ActiveRideView({
       {/* Route Info */}
       <div className="bg-white border-2 border-gray-200 rounded-2xl p-4 shadow-sm space-y-3">
         <h3 className="font-bold text-gray-800 mb-3">Route Details</h3>
-        
+
         {/* Pickup */}
         <div className="flex items-start gap-3">
           <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center flex-shrink-0">
@@ -181,7 +181,7 @@ export default function ActiveRideView({
               <p className="text-[10px] text-gray-500 font-medium uppercase">km</p>
             </div>
           )}
-          
+
           {/* Fare - Center (Prominent) */}
           <div className="flex flex-col items-center">
             <p className="text-3xl font-bold text-green-600">
@@ -189,7 +189,7 @@ export default function ActiveRideView({
             </p>
             <p className="text-xs text-gray-600 font-medium">Total Fare</p>
           </div>
-          
+
           {/* Duration - Right */}
           {ride.duration && (
             <div className="flex flex-col items-center">
@@ -229,6 +229,16 @@ export default function ActiveRideView({
             className="w-full bg-green-500 text-white py-4 rounded-xl font-bold hover:bg-green-600 transition-colors shadow-lg"
           >
             Book Another Ride
+          </button>
+        </div>
+      )}
+      {ride.status !== 'COMPLETED' && ride.status !== 'CANCELLED' && (
+        <div className="pt-4 mt-4 border-t border-gray-100">
+          <button
+            onClick={onCancel}
+            className="w-full text-red-600 font-medium py-3 rounded-xl hover:bg-red-50 transition-colors"
+          >
+            Cancel Ride
           </button>
         </div>
       )}
