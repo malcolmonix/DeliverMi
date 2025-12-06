@@ -35,15 +35,31 @@ export default function DeliverMiMap(props) {
     const requestLocation = useCallback(() => {
         if (typeof window === 'undefined') return;
 
+        // Check for secure context (HTTPS required for geolocation on most browsers)
         if (!window.isSecureContext) {
-            setError('Location blocked because this page is not served over HTTPS. Open the secure URL and allow location.');
+            const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+            const hostname = window.location.hostname;
+            
+            // Localhost is always secure, even over HTTP
+            const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1' || hostname.startsWith('192.168.');
+            
+            if (isMobile && !isLocalhost) {
+                setError('Location access requires HTTPS on mobile devices. Please access this app using https:// or contact support for assistance.');
+            } else {
+                setError('Location access requires a secure connection (HTTPS). Please use https:// to access this page.');
+            }
+            setPermissionState('denied');
             return;
         }
 
         if (!navigator.geolocation) {
-            setError('Geolocation not supported on this device.');
+            setError('Geolocation is not supported on this device. You can still use the app by tapping on the map to set locations.');
+            setPermissionState('denied');
             return;
         }
+
+        // Clear any previous errors when attempting to get location
+        setError(null);
 
         navigator.geolocation.getCurrentPosition(
             (position) => {
@@ -54,10 +70,14 @@ export default function DeliverMiMap(props) {
                     zoom: 14
                 }));
                 setError(null);
+                setPermissionState('granted');
             },
             (geoError) => {
                 console.error('Error getting location:', geoError);
                 setError(formatGeoError(geoError));
+                if (geoError.code === 1) {
+                    setPermissionState('denied');
+                }
             },
             {
                 enableHighAccuracy: true,
@@ -78,8 +98,10 @@ export default function DeliverMiMap(props) {
             return;
         }
 
-        requestLocation();
-    }, [pickup, requestLocation]);
+        // Don't automatically request location on mount - let user trigger it
+        // This prevents immediate permission errors on mobile devices
+        // requestLocation();
+    }, [pickup]);
 
     // Track browser permission state so we can prompt the user clearly
     useEffect(() => {
@@ -146,14 +168,18 @@ export default function DeliverMiMap(props) {
                 doubleClickZoom={false}
             >
                 {/* Quick CTA to request permission when it is denied or not yet granted */}
-                {(permissionState === 'denied' || permissionState === 'prompt') && (
-                    <div className="absolute top-3 left-3 z-50">
+                {(permissionState === 'denied' || permissionState === 'prompt' || permissionState === null) && !pickup && (
+                    <div className="absolute top-3 left-3 right-3 md:left-3 md:right-auto z-50">
                         <button
                             type="button"
                             onClick={requestLocation}
-                            className="bg-white text-gray-900 border border-gray-200 shadow-md px-3 py-2 rounded text-xs font-semibold"
+                            className="w-full md:w-auto bg-blue-600 hover:bg-blue-700 text-white border border-blue-700 shadow-lg px-4 py-3 rounded-lg text-sm font-semibold flex items-center justify-center gap-2 transition-colors"
                         >
-                            Enable location access
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                            </svg>
+                            Use My Location
                         </button>
                     </div>
                 )}
@@ -175,8 +201,15 @@ export default function DeliverMiMap(props) {
                             zoom: 14
                         }));
                         setError(null);
+                        setPermissionState('granted');
                     }}
-                    onError={(geoError) => setError(formatGeoError(geoError))}
+                    onError={(geoError) => {
+                        console.error('GeolocateControl error:', geoError);
+                        setError(formatGeoError(geoError));
+                        if (geoError.code === 1) {
+                            setPermissionState('denied');
+                        }
+                    }}
                 />
 
                 {/* Route line */}
@@ -295,16 +328,41 @@ export default function DeliverMiMap(props) {
 
             {/* Error overlay */}
             {error && (
-                <div className="absolute top-4 left-4 right-4 bg-red-50 border border-red-200 text-red-800 p-3 rounded-lg text-sm shadow-lg z-50">
-                    <div className="flex items-center justify-between gap-2">
-                        <span>⚠️ {error}</span>
-                        <button
-                            type="button"
-                            className="text-red-700 text-xs font-semibold underline"
-                            onClick={requestLocation}
-                        >
-                            Retry
-                        </button>
+                <div className="absolute top-4 left-4 right-4 bg-red-50 border-2 border-red-300 text-red-900 p-4 rounded-xl text-sm shadow-xl z-50">
+                    <div className="flex flex-col gap-3">
+                        <div className="flex items-start gap-2">
+                            <span className="text-xl flex-shrink-0">⚠️</span>
+                            <div className="flex-1">
+                                <p className="font-semibold mb-1">Location Access Issue</p>
+                                <p className="text-xs text-red-800">{error}</p>
+                            </div>
+                            <button
+                                type="button"
+                                className="text-red-700 hover:text-red-900 flex-shrink-0"
+                                onClick={() => setError(null)}
+                                aria-label="Dismiss"
+                            >
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                            </button>
+                        </div>
+                        <div className="flex flex-col sm:flex-row gap-2">
+                            {!window.isSecureContext ? (
+                                <div className="text-xs bg-red-100 border border-red-200 p-2 rounded">
+                                    <p className="font-semibold mb-1">💡 Tip:</p>
+                                    <p>You can still use the app by tapping on the map to select pickup and dropoff locations.</p>
+                                </div>
+                            ) : (
+                                <button
+                                    type="button"
+                                    className="bg-red-600 hover:bg-red-700 text-white text-xs font-semibold py-2 px-4 rounded-lg transition-colors"
+                                    onClick={requestLocation}
+                                >
+                                    Try Again
+                                </button>
+                            )}
+                        </div>
                     </div>
                 </div>
             )}
