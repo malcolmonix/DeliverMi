@@ -204,19 +204,6 @@ export default function ActiveRideView({
         )}
       </div>
 
-      {/* Cancel Button - Only allow cancel before pickup */}
-      {ride.status !== 'COMPLETED' && 
-       ride.status !== 'CANCELLED' && 
-       ride.status !== 'PICKED_UP' && 
-       ride.status !== 'ARRIVED_AT_DROPOFF' && (
-        <button
-          onClick={onCancel}
-          className="w-full bg-red-500 text-white py-4 rounded-xl font-bold hover:bg-red-600 transition-colors shadow-lg"
-        >
-          Cancel Ride
-        </button>
-      )}
-      
       {ride.status === 'COMPLETED' && (
         <div className="space-y-3">
           {showRating && (
