@@ -47,8 +47,8 @@ export default function ActiveRideView({
           border: 'border-blue-200',
           text: 'text-blue-800',
           icon: '🚗',
-          message: 'On the way to destination',
-          description: 'Enjoy your ride!'
+          message: 'On the way to dropoff',
+          description: 'Heading to the dropoff location'
         };
       case 'ARRIVED_AT_DROPOFF':
         return {
