@@ -33,7 +33,7 @@ export default function RidesPage() {
 
   const handleSubmitRating = async () => {
     if (!ratingRide) return;
-    
+
     try {
       await rateRide({
         variables: {
@@ -85,9 +85,9 @@ export default function RidesPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="flex flex-col h-screen bg-gray-50">
       {/* Header */}
-      <header className="bg-white shadow-sm sticky top-0 z-10">
+      <header className="flex-none bg-white shadow-sm z-10">
         <div className="max-w-2xl mx-auto px-4 py-4">
           <div className="flex items-center gap-4">
             <Link href="/" className="text-gray-600 hover:text-black">
@@ -100,88 +100,90 @@ export default function RidesPage() {
         </div>
       </header>
 
-      <main className="max-w-2xl mx-auto px-4 py-6">
-        {error && (
-          <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-6">
-            <p className="text-red-800">Error loading rides: {error.message}</p>
-          </div>
-        )}
+      <main className="flex-1 overflow-y-auto px-4 py-6">
+        <div className="max-w-2xl mx-auto">
+          {error && (
+            <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-6">
+              <p className="text-red-800">Error loading rides: {error.message}</p>
+            </div>
+          )}
 
-        {rides.length === 0 ? (
-          <div className="text-center py-16">
-            <div className="text-6xl mb-4">🚗</div>
-            <h2 className="text-xl font-semibold mb-2">No rides yet</h2>
-            <p className="text-gray-500 mb-6">Your ride history will appear here</p>
-            <Link 
-              href="/"
-              className="inline-block bg-black text-white px-6 py-3 rounded-xl font-semibold hover:bg-gray-800 transition-colors"
-            >
-              Book a Ride
-            </Link>
-          </div>
-        ) : (
-          <div className="space-y-4">
-            {rides.map((ride) => (
-              <div 
-                key={ride.id} 
-                className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden"
+          {rides.length === 0 ? (
+            <div className="text-center py-16">
+              <div className="text-6xl mb-4">🚗</div>
+              <h2 className="text-xl font-semibold mb-2">No rides yet</h2>
+              <p className="text-gray-500 mb-6">Your ride history will appear here</p>
+              <Link
+                href="/"
+                className="inline-block bg-black text-white px-6 py-3 rounded-xl font-semibold hover:bg-gray-800 transition-colors"
               >
-                <div className="p-4">
-                  <div className="flex justify-between items-start mb-3">
-                    <div>
-                      <p className="text-xs text-gray-400">
-                        {new Date(ride.createdAt).toLocaleDateString('en-US', {
-                          weekday: 'short',
-                          month: 'short',
-                          day: 'numeric',
-                          hour: '2-digit',
-                          minute: '2-digit'
-                        })}
-                      </p>
-                      <p className="text-sm text-gray-500 mt-1">Ride #{ride.rideId}</p>
-                    </div>
-                    <span className={`px-3 py-1 rounded-full text-xs font-semibold flex items-center gap-1 ${getStatusColor(ride.status)}`}>
-                      <span>{getStatusIcon(ride.status)}</span>
-                      {ride.status}
-                    </span>
-                  </div>
-
-                  <div className="space-y-2">
-                    <div className="flex items-start gap-3">
-                      <div className="w-3 h-3 bg-black rounded-full mt-1.5 flex-shrink-0"></div>
-                      <p className="text-sm text-gray-700">{ride.pickupAddress}</p>
-                    </div>
-                    <div className="flex items-start gap-3">
-                      <div className="w-3 h-3 bg-red-500 rounded-full mt-1.5 flex-shrink-0"></div>
-                      <p className="text-sm text-gray-700">{ride.dropoffAddress}</p>
-                    </div>
-                  </div>
-
-                  <div className="flex justify-between items-center mt-4 pt-4 border-t border-gray-100">
-                    <span className="text-lg font-bold">${parseFloat(ride.fare).toFixed(2)}</span>
-                    
-                    {ride.status === 'COMPLETED' && !ride.rating && (
-                      <button
-                        onClick={() => setRatingRide(ride)}
-                        className="text-sm text-blue-600 font-medium hover:text-blue-800"
-                      >
-                        Rate this ride
-                      </button>
-                    )}
-                    
-                    {ride.rating && (
-                      <div className="flex items-center gap-1 text-yellow-500">
-                        {[...Array(ride.rating)].map((_, i) => (
-                          <span key={i}>★</span>
-                        ))}
+                Book a Ride
+              </Link>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {rides.map((ride) => (
+                <div
+                  key={ride.id}
+                  className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden"
+                >
+                  <div className="p-4">
+                    <div className="flex justify-between items-start mb-3">
+                      <div>
+                        <p className="text-xs text-gray-400">
+                          {new Date(ride.createdAt).toLocaleDateString('en-US', {
+                            weekday: 'short',
+                            month: 'short',
+                            day: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          })}
+                        </p>
+                        <p className="text-sm text-gray-500 mt-1">Ride #{ride.rideId}</p>
                       </div>
-                    )}
+                      <span className={`px-3 py-1 rounded-full text-xs font-semibold flex items-center gap-1 ${getStatusColor(ride.status)}`}>
+                        <span>{getStatusIcon(ride.status)}</span>
+                        {ride.status}
+                      </span>
+                    </div>
+
+                    <div className="space-y-2">
+                      <div className="flex items-start gap-3">
+                        <div className="w-3 h-3 bg-black rounded-full mt-1.5 flex-shrink-0"></div>
+                        <p className="text-sm text-gray-700">{ride.pickupAddress}</p>
+                      </div>
+                      <div className="flex items-start gap-3">
+                        <div className="w-3 h-3 bg-red-500 rounded-full mt-1.5 flex-shrink-0"></div>
+                        <p className="text-sm text-gray-700">{ride.dropoffAddress}</p>
+                      </div>
+                    </div>
+
+                    <div className="flex justify-between items-center mt-4 pt-4 border-t border-gray-100">
+                      <span className="text-lg font-bold">${parseFloat(ride.fare).toFixed(2)}</span>
+
+                      {ride.status === 'COMPLETED' && !ride.rating && (
+                        <button
+                          onClick={() => setRatingRide(ride)}
+                          className="text-sm text-blue-600 font-medium hover:text-blue-800"
+                        >
+                          Rate this ride
+                        </button>
+                      )}
+
+                      {ride.rating && (
+                        <div className="flex items-center gap-1 text-yellow-500">
+                          {[...Array(ride.rating)].map((_, i) => (
+                            <span key={i}>★</span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
-          </div>
-        )}
+              ))}
+            </div>
+          )}
+        </div>
       </main>
 
       {/* Rating Modal */}
@@ -189,15 +191,14 @@ export default function RidesPage() {
         <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center">
           <div className="bg-white w-full sm:max-w-md sm:rounded-2xl rounded-t-2xl p-6">
             <h2 className="text-xl font-bold mb-4">Rate your ride</h2>
-            
+
             <div className="flex justify-center gap-2 mb-6">
               {[1, 2, 3, 4, 5].map((star) => (
                 <button
                   key={star}
                   onClick={() => setRating(star)}
-                  className={`text-4xl transition-transform ${
-                    star <= rating ? 'text-yellow-400' : 'text-gray-300'
-                  } hover:scale-110`}
+                  className={`text-4xl transition-transform ${star <= rating ? 'text-yellow-400' : 'text-gray-300'
+                    } hover:scale-110`}
                 >
                   ★
                 </button>
