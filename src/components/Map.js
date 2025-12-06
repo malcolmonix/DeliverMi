@@ -40,8 +40,28 @@ export default function DeliverMiMap(props) {
             const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
             const hostname = window.location.hostname;
             
-            // Localhost is always secure, even over HTTP
-            const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1' || hostname.startsWith('192.168.');
+            // Localhost is always secure, even over HTTP - check all common local addresses
+            const isLocalhost = hostname === 'localhost' || 
+                                hostname === '127.0.0.1' || 
+                                hostname === '::1' ||
+                                hostname.startsWith('192.168.') || 
+                                hostname.startsWith('10.') ||
+                                hostname.startsWith('172.16.') ||
+                                hostname.startsWith('172.17.') ||
+                                hostname.startsWith('172.18.') ||
+                                hostname.startsWith('172.19.') ||
+                                hostname.startsWith('172.20.') ||
+                                hostname.startsWith('172.21.') ||
+                                hostname.startsWith('172.22.') ||
+                                hostname.startsWith('172.23.') ||
+                                hostname.startsWith('172.24.') ||
+                                hostname.startsWith('172.25.') ||
+                                hostname.startsWith('172.26.') ||
+                                hostname.startsWith('172.27.') ||
+                                hostname.startsWith('172.28.') ||
+                                hostname.startsWith('172.29.') ||
+                                hostname.startsWith('172.30.') ||
+                                hostname.startsWith('172.31.');
             
             if (isMobile && !isLocalhost) {
                 setError('Location access requires HTTPS on mobile devices. Please access this app using https:// or contact support for assistance.');
@@ -348,7 +368,7 @@ export default function DeliverMiMap(props) {
                             </button>
                         </div>
                         <div className="flex flex-col sm:flex-row gap-2">
-                            {!window.isSecureContext ? (
+                            {typeof window !== 'undefined' && !window.isSecureContext ? (
                                 <div className="text-xs bg-red-100 border border-red-200 p-2 rounded">
                                     <p className="font-semibold mb-1">💡 Tip:</p>
                                     <p>You can still use the app by tapping on the map to select pickup and dropoff locations.</p>
