@@ -836,7 +836,8 @@ export default function Home() {
         }`}
         style={{ 
           maxHeight: '85vh',
-          minHeight: arrivalConfirmationVisible ? '180px' : (activeRideId ? '300px' : '400px')
+          minHeight: arrivalConfirmationVisible ? '180px' : (activeRideId ? '300px' : '400px'),
+          paddingBottom: '20px'
         }}
       >
         {/* Drag handle */}
