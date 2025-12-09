@@ -125,7 +125,17 @@ export default function Home() {
     },
     onError: (error) => {
       console.error('❌ GET_RIDE_STATUS query error:', error);
-      // Only increment the missing counter; avoid clearing on transient errors
+      
+      // If access denied error (wrong user), clear the stale ride immediately
+      if (error.message?.includes('Access denied')) {
+        console.error('🔐 Access denied - ride belongs to different user, clearing stale ride');
+        setActiveRideId(null);
+        localStorage.removeItem('activeRideId');
+        setRideMissingCount(0);
+        return;
+      }
+      
+      // Only increment the missing counter for other errors; avoid clearing on transient errors
       setRideMissingCount(count => count + 1);
 
       // If authentication error, clear the ride
@@ -322,7 +332,10 @@ export default function Home() {
       (error) => {
         if (error.code === 'permission-denied') {
           console.error('🔐 Permission denied for ride status listener');
-          console.log('📱 User may need to re-authenticate');
+          console.error('🔐 Ride belongs to different user - clearing stale ride from localStorage');
+          setActiveRideId(null);
+          localStorage.removeItem('activeRideId');
+          setRideMissingCount(0);
         } else {
           console.error('❌ Error listening to ride status:', error);
           console.log('⏳ Will retry. Network issue does not delete ride.');
