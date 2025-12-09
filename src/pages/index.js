@@ -264,7 +264,7 @@ export default function Home() {
     console.log('🔥 Setting up Firestore real-time listener for ride:', activeRideId);
 
     const unsubscribe = onSnapshot(
-      doc(db, 'customer-rides', activeRideId),
+      doc(db, 'rides', activeRideId),
       (snapshot) => {
         if (snapshot.exists()) {
           const data = snapshot.data();
