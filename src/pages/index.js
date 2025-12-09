@@ -332,10 +332,20 @@ export default function Home() {
       (error) => {
         if (error.code === 'permission-denied') {
           console.error('🔐 Permission denied for ride status listener');
-          console.error('🔐 Ride belongs to different user - clearing stale ride from localStorage');
-          setActiveRideId(null);
-          localStorage.removeItem('activeRideId');
-          setRideMissingCount(0);
+          
+          // Check if this is a newly created ride (within last 10 seconds)
+          const rideAge = localRideData?.createdAt ? Date.now() - new Date(localRideData.createdAt).getTime() : Infinity;
+          
+          if (rideAge < 10000) {
+            // Newly created ride - document might not be in Firestore yet, wait for GraphQL to sync
+            console.log('⏳ New ride detected, waiting for Firestore sync...');
+          } else {
+            // Old ride - permission denied means it belongs to different user
+            console.error('🔐 Ride belongs to different user - clearing stale ride from localStorage');
+            setActiveRideId(null);
+            localStorage.removeItem('activeRideId');
+            setRideMissingCount(0);
+          }
         } else {
           console.error('❌ Error listening to ride status:', error);
           console.log('⏳ Will retry. Network issue does not delete ride.');
