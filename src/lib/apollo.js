@@ -21,6 +21,9 @@ const authLink = setContext(async (_, { headers }) => {
     const token = await user.getIdToken();
     if (token) {
       console.log('🔐 Apollo authLink: Token obtained, length:', token.length);
+      console.log('🔐 Apollo authLink: Token value:', token);
+      // Show user info for debugging
+      console.log('🔐 Apollo authLink: User UID:', user.uid, 'Email:', user.email);
     }
     return { headers: { ...headers, authorization: token ? `Bearer ${token}` : '' } };
   } catch (e) {
