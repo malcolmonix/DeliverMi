@@ -3,13 +3,14 @@ import { setContext } from '@apollo/client/link/context';
 import { getAuth } from 'firebase/auth';
 
 const isProduction = process.env.NODE_ENV === 'production';
-const productionApiUri = 'https://food-delivery-api-opal.vercel.app/graphql';
+const productionApiUri = 'https://food-delivery-api-indol.vercel.app/graphql';
 const developmentApiUri = 'http://localhost:4000/graphql';
 
 const apiUri = process.env.NEXT_PUBLIC_GRAPHQL_URI ||
   (isProduction ? productionApiUri : developmentApiUri);
 
-const httpLink = createHttpLink({ uri: apiUri, credentials: 'same-origin' });
+// Don't use credentials: 'include' with CORS wildcard - API will send specific origin instead
+const httpLink = createHttpLink({ uri: apiUri });
 
 const authLink = setContext(async (_, { headers }) => {
   try {
@@ -18,6 +19,9 @@ const authLink = setContext(async (_, { headers }) => {
     const user = auth.currentUser;
     if (!user) return { headers: { ...headers } };
     const token = await user.getIdToken();
+    if (token) {
+      console.log('🔐 Apollo authLink: Token obtained, length:', token.length);
+    }
     return { headers: { ...headers, authorization: token ? `Bearer ${token}` : '' } };
   } catch (e) {
     console.warn('Apollo authLink token retrieval failed', e.message || e);
@@ -28,5 +32,6 @@ const authLink = setContext(async (_, { headers }) => {
 export const apolloClient = new ApolloClient({
   link: authLink.concat(httpLink),
   cache: new InMemoryCache(),
-  connectToDevTools: !isProduction,
+  devtools: { enabled: process.env.NODE_ENV !== 'production' },
 });
+
