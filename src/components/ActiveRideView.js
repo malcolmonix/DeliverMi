@@ -232,7 +232,8 @@ export default function ActiveRideView({
           </button>
         </div>
       )}
-      {ride.status !== 'COMPLETED' && ride.status !== 'CANCELLED' && (
+      {/* Only allow cancellation when ride is REQUESTED (before any rider accepts) */}
+      {ride.status === 'REQUESTED' && (
         <div className="pt-4 mt-4 border-t border-gray-100">
           <button
             onClick={onCancel}

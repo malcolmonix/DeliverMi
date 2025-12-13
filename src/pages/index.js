@@ -9,7 +9,7 @@ import AddressSearch from '../components/AddressSearch';
 import ActiveRideView from '../components/ActiveRideView';
 import CustomerDeliveryConfirmation from '../components/CustomerDeliveryConfirmation';
 import RatingModal from '../components/RatingModal';
-import { REQUEST_RIDE, GET_RIDE_STATUS, CANCEL_RIDE, GET_MY_RIDES, SET_DELIVERY_CODE } from '../lib/graphql-operations';
+import { REQUEST_RIDE, GET_RIDE_STATUS, CANCEL_RIDE, GET_MY_RIDES, SET_DELIVERY_CODE, RATE_RIDE } from '../lib/graphql-operations';
 import { reverseGeocode, getRoute, calculateFare } from '../lib/mapbox';
 import { db, auth } from '../lib/firebase';
 import { requestNotificationPermission, onMessageListener, showNotification } from '../lib/notifications';
@@ -312,16 +312,9 @@ export default function Home() {
 
             setPreviousRideStatus(data.status);
 
-            // Clear ride from localStorage only after server confirmation
-            // Give user time to rate before fully clearing
-            if (!showRatingModal) {
-              setTimeout(() => {
-                console.log('🧹 Clearing completed ride from storage');
-                setActiveRideId(null);
-                localStorage.removeItem('activeRideId');
-                setLocalRideData(null);
-              }, 3000);
-            }
+            // Do NOT auto-clear. Wait for user to Rate or click 'Book Another Ride'
+            // This ensures they see the completion screen and rating modal.
+            console.log('✅ Ride completed. Waiting for user interaction.');
           }
         } else {
           // Document missing - but DON'T clear. Log and retry.
@@ -581,13 +574,42 @@ export default function Home() {
     setBottomSheetOpen(true);
   }, [activeRideId, mode]);
 
+  // Mutation for rating
+  const [rateRide, { loading: ratingLoading }] = useMutation(RATE_RIDE);
+
   const handleSubmitRating = async ({ rating, comment, riderId }) => {
     console.log('📝 Submitting rating:', { rating, comment, riderId });
-    // TODO: Add GraphQL mutation to submit rating
-    // For now, just log it
-    showNotification('⭐ Rating Submitted', `Thank you for rating ${rating} stars!`);
-    setShowRatingModal(false);
-    setRiderToRate(null);
+
+    try {
+      // Get the current ride ID
+      const rideId = activeRideId || rideData?.ride?.id || localRideData?.id;
+
+      if (!rideId) {
+        console.error('❌ Cannot rate: No active ride ID found');
+        showNotification('❌ Error', 'Could not find ride to rate');
+        return;
+      }
+
+      const { data } = await rateRide({
+        variables: {
+          rideId: rideId,
+          rating: parseInt(rating),
+          feedback: comment || ''
+        }
+      });
+
+      console.log('✅ Rating submitted successfully:', data);
+      showNotification('⭐ Rating Submitted', `Thank you for rating ${rating} stars!`);
+      setShowRatingModal(false);
+      setRiderToRate(null);
+
+      // Now we can clear the ride
+      handleBookAnotherRide();
+
+    } catch (error) {
+      console.error('❌ Error submitting rating:', error);
+      showNotification('❌ Error', 'Failed to submit rating. Please try again.');
+    }
   };
 
   const handleBookAnotherRide = () => {
