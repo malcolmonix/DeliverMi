@@ -1,3 +1,6 @@
+import { useState } from 'react';
+import ChatModal from './ChatModal';
+
 export default function ActiveRideView({
   ride,
   riderLocation,
@@ -7,6 +10,8 @@ export default function ActiveRideView({
   onRateRider
 }) {
   if (!ride) return null;
+
+  const [showChat, setShowChat] = useState(false);
 
   const getStatusInfo = (status) => {
     switch (status) {
@@ -126,14 +131,24 @@ export default function ActiveRideView({
                 </p>
               )}
             </div>
-            {ride.rider?.phoneNumber && (
-              <a
-                href={`tel:${ride.rider.phoneNumber}`}
-                className="bg-green-500 text-white p-3 rounded-full hover:bg-green-600 transition-colors shadow-md"
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowChat(true)}
+                className="bg-blue-100 text-blue-600 p-3 rounded-full hover:bg-blue-200 transition-colors shadow-md flex items-center justify-center transform hover:scale-105 active:scale-95"
+                title="Chat with driver"
               >
-                📞
-              </a>
-            )}
+                💬
+              </button>
+              {ride.rider?.phoneNumber && (
+                <a
+                  href={`tel:${ride.rider.phoneNumber}`}
+                  className="bg-green-500 text-white p-3 rounded-full hover:bg-green-600 transition-colors shadow-md flex items-center justify-center transform hover:scale-105 active:scale-95"
+                  title="Call driver"
+                >
+                  📞
+                </a>
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -242,6 +257,15 @@ export default function ActiveRideView({
             Cancel Ride
           </button>
         </div>
+      )}
+
+      {showChat && (
+        <ChatModal
+          rideId={ride.id || ride.rideId}
+          currentUserId={ride.userId}
+          otherUserName={ride.rider?.displayName || 'Driver'}
+          onClose={() => setShowChat(false)}
+        />
       )}
     </div>
   );
