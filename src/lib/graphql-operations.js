@@ -49,6 +49,7 @@ export const REQUEST_RIDE = gql`
     requestRide(input: $input) {
       id
       rideId
+      userId
       status
       pickupAddress
       pickupLat
