@@ -7,8 +7,10 @@ export default function ActiveRideView({
   onCancel,
   onBookAnotherRide,
   showRating,
-  onRateRider
+  onRateRider,
+  user
 }) {
+
   if (!ride) return null;
 
   const [showChat, setShowChat] = useState(false);
@@ -262,7 +264,7 @@ export default function ActiveRideView({
       {showChat && (
         <ChatModal
           rideId={ride.id || ride.rideId}
-          currentUserId={ride.userId}
+          currentUserId={user?.uid || ride.userId}
           otherUserName={ride.rider?.displayName || 'Driver'}
           onClose={() => setShowChat(false)}
         />

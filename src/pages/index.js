@@ -85,10 +85,16 @@ export default function Home() {
           console.warn('⚠️ Active ride not found in myRides, marking as invalid');
           setRideValidated(false);
 
-          // IMMEDIATE FIX: If we have an active ride ID locally, but the server says we have NO matching active ride in our history,
-          // then the local ID is dead/zombie. Clear it immediately to unblock the user.
-          console.log('🧟 ZOMBIE RIDE CONFIRMED by myRides: Clearing immediately.');
-          handleClearStuckRide();
+          // SELF-HEALING: If we have an active ride ID locally, but the server says we have NO matching active ride in our history,
+          // then the local ID is dead/zombie. 
+          // However, we wait for a few missing counts to be sure it's not a transient sync issue.
+          if (rideMissingCount >= 3) {
+            console.log('🧟 ZOMBIE RIDE CONFIRMED by myRides and missing polls: Clearing.');
+            handleClearStuckRide();
+          } else {
+            console.warn('⚠️ Ride not in myRides list, but waiting for more polls before clearing...', { rideMissingCount });
+            setRideMissingCount(count => count + 1);
+          }
         }
       }
     }
@@ -125,16 +131,15 @@ export default function Home() {
     },
     onError: (error) => {
       console.error('❌ GET_RIDE_STATUS query error:', error);
-      
-      // If access denied error (wrong user), clear the stale ride immediately
+
+      // If access denied error, log it but don't clear immediately.
+      // myRides cross-check will handle zombie rides.
       if (error.message?.includes('Access denied')) {
-        console.error('🔐 Access denied - ride belongs to different user, clearing stale ride');
-        setActiveRideId(null);
-        localStorage.removeItem('activeRideId');
-        setRideMissingCount(0);
+        console.error('🔐 Access denied for specific ride query.');
+        setRideMissingCount(count => count + 1);
         return;
       }
-      
+
       // Only increment the missing counter for other errors; avoid clearing on transient errors
       setRideMissingCount(count => count + 1);
 
@@ -268,89 +273,12 @@ export default function Home() {
 
   // Real-time ride status tracking from Firestore (PRIMARY SOURCE OF TRUTH)
   // UBER/BOLT PATTERN: Server is authoritative. Client only displays and never deletes.
+  // Real-time ride status tracking - DISABLING FIRESTORE LISTENER (PHASE 3: API/SUPABASE)
+  // We rely on GraphQL polling (GET_RIDE_STATUS) which is already configured above.
   useEffect(() => {
     if (!activeRideId) return;
-
-    console.log('🔥 Setting up Firestore real-time listener for ride:', activeRideId);
-
-    const unsubscribe = onSnapshot(
-      doc(db, 'rides', activeRideId),
-      (snapshot) => {
-        if (snapshot.exists()) {
-          const data = snapshot.data();
-          console.log('🔄 Ride status update from Firestore:', data.status);
-
-          // Mark ride as validated when we get Firestore data
-          setRideValidated(true);
-          setRideMissingCount(0);
-
-          // Update local ride data with latest from Firestore
-          setLocalRideData(prev => ({
-            ...prev,
-            ...data,
-            id: activeRideId
-          }));
-
-          // Refetch GraphQL to ensure consistency
-          refetch();
-
-          // ONLY clear ride when server confirms it's finished
-          if (data.status === 'COMPLETED' || data.status === 'CANCELLED') {
-            console.log('✅ SERVER CONFIRMED: Ride finished with status:', data.status);
-
-            // Show rating modal on completion
-            if (previousRideStatus !== 'COMPLETED' && data.status === 'COMPLETED') {
-              const ride = rideData?.ride || localRideData;
-              if (ride && (ride.rider || ride.riderId)) {
-                setRiderToRate({
-                  id: ride.rider?.id || ride.riderId,
-                  name: ride.rider?.displayName || 'Your Rider'
-                });
-                setShowRatingModal(true);
-              }
-            }
-
-            setPreviousRideStatus(data.status);
-
-            // Do NOT auto-clear. Wait for user to Rate or click 'Book Another Ride'
-            // This ensures they see the completion screen and rating modal.
-            console.log('✅ Ride completed. Waiting for user interaction.');
-          }
-        } else {
-          // Document missing - but DON'T clear. Log and retry.
-          console.warn('⚠️ Firestore document temporarily unavailable for ride:', activeRideId);
-          console.log('⏳ Will retry via polling. Ride persists until server confirms completion.');
-        }
-      },
-      (error) => {
-        if (error.code === 'permission-denied') {
-          console.error('🔐 Permission denied for ride status listener');
-          
-          // Check if this is a newly created ride (within last 10 seconds)
-          const rideAge = localRideData?.createdAt ? Date.now() - new Date(localRideData.createdAt).getTime() : Infinity;
-          
-          if (rideAge < 10000) {
-            // Newly created ride - document might not be in Firestore yet, wait for GraphQL to sync
-            console.log('⏳ New ride detected, waiting for Firestore sync...');
-          } else {
-            // Old ride - permission denied means it belongs to different user
-            console.error('🔐 Ride belongs to different user - clearing stale ride from localStorage');
-            setActiveRideId(null);
-            localStorage.removeItem('activeRideId');
-            setRideMissingCount(0);
-          }
-        } else {
-          console.error('❌ Error listening to ride status:', error);
-          console.log('⏳ Will retry. Network issue does not delete ride.');
-        }
-      }
-    );
-
-    return () => {
-      console.log('🔌 Unsubscribing from Firestore ride status listener');
-      unsubscribe();
-    };
-  }, [activeRideId, refetch, previousRideStatus, showRatingModal]);
+    console.log('📡 Using GraphQL polling for ride status:', activeRideId);
+  }, [activeRideId]);
 
   // Persist activeRideId to localStorage
   useEffect(() => {
@@ -913,6 +841,7 @@ export default function Home() {
               onBookAnotherRide={handleBookAnotherRide}
               showRating={!showRatingModal && riderToRate !== null}
               onRateRider={() => setShowRatingModal(true)}
+              user={user}
             />
           ) : activeRideId && !ride ? (
             // Active ride ID exists but no ride data - likely stuck
