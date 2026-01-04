@@ -21,13 +21,13 @@ export const requestNotificationPermission = async () => {
     const permission = await Notification.requestPermission();
     if (permission === 'granted') {
       console.log('Notification permission granted.');
-      
+
       // Validate VAPID key before attempting to get token
       if (!VAPID_KEY || VAPID_KEY === 'undefined') {
         console.error('VAPID key is not configured. Skipping FCM token generation.');
         return null;
       }
-      
+
       const token = await getToken(messaging, { vapidKey: VAPID_KEY });
       console.log('FCM Token:', token);
       return token;
@@ -47,7 +47,7 @@ export const onMessageListener = () =>
       console.warn('Messaging not initialized');
       return;
     }
-    
+
     onMessage(messaging, (payload) => {
       console.log('Message received. ', payload);
       resolve(payload);
@@ -56,14 +56,43 @@ export const onMessageListener = () =>
 
 export const showNotification = (title, body, options = {}) => {
   if (typeof window === 'undefined') return;
-  
+
   if ('Notification' in window && Notification.permission === 'granted') {
-    new Notification(title, {
-      body,
-      icon: '/icon-192x192.png',
-      badge: '/badge-72x72.png',
-      vibrate: [200, 100, 200],
-      ...options
-    });
+    // Try Service Worker first (Required for Android/Mobile)
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.ready
+        .then((registration) => {
+          registration.showNotification(title, {
+            body,
+            icon: '/icon-192x192.png',
+            badge: '/badge-72x72.png',
+            vibrate: [200, 100, 200],
+            ...options,
+          });
+        })
+        .catch((err) => {
+          console.error('SW notification failed, falling back:', err);
+          try {
+            new Notification(title, {
+              body,
+              icon: '/icon-192x192.png',
+              ...options,
+            });
+          } catch (e) {
+            console.error('Notification fallback failed:', e);
+          }
+        });
+    } else {
+      // Fallback for browsers without SW support
+      try {
+        new Notification(title, {
+          body,
+          icon: '/icon-192x192.png',
+          ...options,
+        });
+      } catch (e) {
+        console.error('Notification constructor failed:', e);
+      }
+    }
   }
 };
