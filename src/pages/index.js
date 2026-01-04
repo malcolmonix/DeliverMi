@@ -3,7 +3,7 @@ import { useRouter } from 'next/router';
 import Link from 'next/link';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { useMutation, useQuery } from '@apollo/client';
-import { doc, onSnapshot } from 'firebase/firestore';
+import { doc, onSnapshot, setDoc } from 'firebase/firestore';
 import DeliverMiMap from '../components/Map';
 import AddressSearch from '../components/AddressSearch';
 import ActiveRideView from '../components/ActiveRideView';
@@ -127,6 +127,9 @@ export default function Home() {
       // Auto-clear completed/cancelled rides after a delay
       if (data.ride.status === 'COMPLETED' || data.ride.status === 'CANCELLED') {
         console.log('🏁 Ride finished, will prompt for rating then clear');
+        if (data.ride.status === 'COMPLETED' && data.ride.rider) {
+          setRiderToRate(data.ride.rider);
+        }
       }
     },
     onError: (error) => {
@@ -348,7 +351,18 @@ export default function Home() {
     if (!user) return;
 
     const setupNotifications = async () => {
-      await requestNotificationPermission();
+      const token = await requestNotificationPermission();
+      if (token && db) {
+        try {
+          await setDoc(doc(db, 'users', user.uid), {
+            fcmToken: token,
+            updatedAt: new Date().toISOString()
+          }, { merge: true });
+          console.log('✅ FCM token saved to Firestore for user:', user.uid);
+        } catch (err) {
+          console.error('❌ Error saving FCM token:', err);
+        }
+      }
     };
 
     setupNotifications();

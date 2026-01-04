@@ -1,5 +1,15 @@
-import { useState } from 'react';
-import ChatModal from './ChatModal';
+import { useState, useEffect, useRef } from 'react';
+import { useQuery, gql } from '@apollo/client';
+import ChatModal from './ChatModal'; export const GET_MESSAGES = gql`
+  query GetMessages($rideId: ID!) {
+    messages(rideId: $rideId) {
+      id
+      senderId
+      text
+      createdAt
+    }
+  }
+`;
 
 export default function ActiveRideView({
   ride,
@@ -14,6 +24,81 @@ export default function ActiveRideView({
   if (!ride) return null;
 
   const [showChat, setShowChat] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const audioRef = useRef(null);
+  const lastMsgCountRef = useRef(0);
+
+  // Poll for messages globally for this ride
+  const { data: messagesData } = useQuery(GET_MESSAGES, {
+    variables: { rideId: ride.id || ride.rideId },
+    pollInterval: 2000,
+    skip: !ride.id && !ride.rideId,
+    fetchPolicy: 'network-only',
+    onCompleted: (data) => {
+      const msgs = data?.messages || [];
+      const count = msgs.length;
+      const storageKey = `seen_msg_count_${ride.id || ride.rideId}`;
+
+      // Get last seen count from storage
+      const lastSeenCount = parseInt(localStorage.getItem(storageKey) || '0', 10);
+
+      // If chat is open, update storage immediately
+      if (showChat) {
+        localStorage.setItem(storageKey, count.toString());
+        setUnreadCount(0);
+        return;
+      }
+
+      // Calculate unread
+      const unread = count - lastSeenCount;
+
+      if (unread > 0) {
+        // Check if the latest message is ours
+        const latestMsg = msgs[msgs.length - 1];
+        const isMyMessage = latestMsg?.senderId === user?.uid;
+
+        if (!isMyMessage) {
+          setUnreadCount(unread);
+
+          // Only play sound if the count CHANGED (new arrival)
+          if (count > lastMsgCountRef.current) {
+            playNotificationSound();
+          }
+        } else {
+          // If it's my message, mark as seen implicitly
+          localStorage.setItem(storageKey, count.toString());
+          setUnreadCount(0);
+        }
+      } else {
+        setUnreadCount(0);
+      }
+
+      lastMsgCountRef.current = count;
+    }
+  });
+
+  // Reset unread count when chat opens
+  useEffect(() => {
+    if (showChat) {
+      setUnreadCount(0);
+      const msgs = messagesData?.messages || [];
+      const storageKey = `seen_msg_count_${ride.id || ride.rideId}`;
+      localStorage.setItem(storageKey, msgs.length.toString());
+    }
+  }, [showChat, messagesData]);
+
+  const playNotificationSound = () => {
+    try {
+      if (!audioRef.current) {
+        // Simple distinct "ping" sound (Data URI)
+        audioRef.current = new Audio('data:audio/wav;base64,UklGRl9vT19XQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YU'); // Placeholder, will replace with real base64
+        audioRef.current.src = 'https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3'; // Professional notification sound
+      }
+      audioRef.current.play().catch(e => console.warn('Audio play failed (interaction needed):', e));
+    } catch (e) {
+      console.error('Sound error:', e);
+    }
+  };
 
   const getStatusInfo = (status) => {
     switch (status) {
@@ -43,7 +128,7 @@ export default function ActiveRideView({
           bg: 'bg-orange-50',
           border: 'border-orange-200',
           text: 'text-orange-800',
-          icon: '🏍️',
+          icon: '📍',
           message: 'Driver has arrived at pickup!',
           description: 'Come out and meet your driver'
         };
@@ -136,10 +221,15 @@ export default function ActiveRideView({
             <div className="flex gap-2">
               <button
                 onClick={() => setShowChat(true)}
-                className="bg-blue-100 text-blue-600 p-3 rounded-full hover:bg-blue-200 transition-colors shadow-md flex items-center justify-center transform hover:scale-105 active:scale-95"
+                className="relative bg-blue-100 text-blue-600 p-3 rounded-full hover:bg-blue-200 transition-colors shadow-md flex items-center justify-center transform hover:scale-105 active:scale-95"
                 title="Chat with driver"
               >
                 💬
+                {unreadCount > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold w-5 h-5 flex items-center justify-center rounded-full border-2 border-white animate-pulse">
+                    {unreadCount}
+                  </span>
+                )}
               </button>
               {ride.rider?.phoneNumber && (
                 <a
