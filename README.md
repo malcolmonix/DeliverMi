@@ -75,6 +75,37 @@ npm run dev
 
 App runs on `http://localhost:9010`
 
+### Mobile Testing
+
+**Important:** Location services require HTTPS or localhost for security reasons.
+
+#### Testing on Mobile Devices:
+
+1. **Option 1: Using HTTPS (Recommended)**
+   - Deploy to Vercel, Netlify, or another hosting service with HTTPS
+   - Access via `https://your-domain.com`
+
+2. **Option 2: Using ngrok for Local Development**
+   ```bash
+   # Install ngrok
+   npm install -g ngrok
+   
+   # Start your app
+   npm run dev
+   
+   # In another terminal, create HTTPS tunnel
+   ngrok http 9010
+   
+   # Access the https:// URL provided by ngrok on your mobile device
+   ```
+
+3. **Option 3: Manual Location Entry**
+   - If HTTPS is not available, you can still use the app
+   - Tap directly on the map to set pickup and dropoff locations
+   - The "Use My Location" button will show a helpful error message
+
+**Note:** If you see "Location permission denied" on mobile, ensure you're accessing the app via HTTPS or use the manual location selection by tapping the map.
+
 ## Ride Booking Flow
 
 DeliverMi enables customers to book rides independently:
