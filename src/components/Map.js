@@ -56,6 +56,15 @@ export default function DeliverMiMap(props) {
                     zoom: 14
                 }));
                 setError(null);
+
+                // Center on user location with padding for bottom sheet
+                if (mapRef.current) {
+                    mapRef.current.flyTo({
+                        center: [position.coords.longitude, position.coords.latitude],
+                        zoom: 14,
+                        padding: { top: 0, bottom: 400, left: 0, right: 0 }
+                    });
+                }
             },
             (geoError) => {
                 console.error('Error getting location:', geoError);
@@ -175,6 +184,9 @@ export default function DeliverMiMap(props) {
                     position="top-right"
                     trackUserLocation
                     showAccuracyCircle={false}
+                    fitBoundsOptions={{
+                        padding: { top: 0, bottom: 400, left: 0, right: 0 }
+                    }}
                     onGeolocate={(e) => {
                         setViewState(prev => ({
                             ...prev,
@@ -183,6 +195,15 @@ export default function DeliverMiMap(props) {
                             zoom: 14
                         }));
                         setError(null);
+
+                        // Recenter with bottom padding
+                        if (mapRef.current) {
+                            mapRef.current.flyTo({
+                                center: [e.coords.longitude, e.coords.latitude],
+                                zoom: 14,
+                                padding: { top: 0, bottom: 400, left: 0, right: 0 }
+                            });
+                        }
                     }}
                     onError={(geoError) => setError(formatGeoError(geoError))}
                 />
