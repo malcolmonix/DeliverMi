@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useQuery, gql } from '@apollo/client';
+import { toast } from 'react-hot-toast';
 import ChatModal from './ChatModal'; export const GET_MESSAGES = gql`
   query GetMessages($rideId: ID!) {
     messages(rideId: $rideId) {
@@ -63,6 +64,27 @@ export default function ActiveRideView({
           // Only play sound if the count CHANGED (new arrival)
           if (count > lastMsgCountRef.current) {
             playNotificationSound();
+
+            // Show toast notification with message preview
+            toast(
+              <div className="flex items-start gap-3">
+                <div className="text-2xl">💬</div>
+                <div className="flex-1">
+                  <p className="font-semibold text-sm">New message from driver</p>
+                  <p className="text-sm text-gray-600 line-clamp-2">{latestMsg?.text || 'New message'}</p>
+                </div>
+              </div>,
+              {
+                duration: 4000,
+                position: 'top-center',
+                style: {
+                  background: '#fff',
+                  boxShadow: '0 8px 16px rgba(0,0,0,0.1)',
+                  borderRadius: '12px',
+                  border: '1px solid #e5e7eb',
+                },
+              }
+            );
           }
         } else {
           // If it's my message, mark as seen implicitly
