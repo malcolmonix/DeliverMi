@@ -7,6 +7,7 @@ import { registerMessagingSW, requestAndGetFcmToken, onMessageHandler } from '..
 import { auth, db } from '../lib/firebase';
 import { doc, setDoc } from 'firebase/firestore';
 import { ErrorBoundary } from '../components/ErrorBoundary';
+import { Toaster, toast } from 'react-hot-toast';
 
 export default function App({ Component, pageProps }) {
   useEffect(() => {
@@ -29,18 +30,29 @@ export default function App({ Component, pageProps }) {
   }, []);
 
   // In-app (foreground) message toasts
-  const [toasts, setToasts] = useState([]);
-
   useEffect(() => {
     onMessageHandler((payload) => {
       try {
         const title = payload?.notification?.title || 'Notification';
         const body = payload?.notification?.body || payload?.data?.body || '';
-        const url = payload?.data?.url || '';
-        const id = Date.now().toString();
-        setToasts(prev => [...prev, { id, title, body, url }]);
-        // auto-remove after 6s
-        setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 6000);
+
+        // Show rich toast
+        toast((t) => (
+          <div onClick={() => { if (payload?.data?.url) window.open(payload.data.url, '_blank'); toast.dismiss(t.id); }} style={{ cursor: 'pointer' }}>
+            <p className="font-bold text-sm">{title}</p>
+            <p className="text-sm">{body}</p>
+          </div>
+        ), {
+          duration: 5000,
+          position: 'top-center',
+          style: {
+            background: '#fff',
+            color: '#333',
+            boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+            borderRadius: '12px',
+            border: '1px solid #e5e7eb',
+          },
+        });
       } catch (e) {
         console.warn('Failed to show in-app toast:', e.message || e);
       }
@@ -51,16 +63,7 @@ export default function App({ Component, pageProps }) {
     <ErrorBoundary>
       <ApolloProvider client={apolloClient}>
         <Component {...pageProps} />
-
-        {/* Simple toast container for foreground notifications */}
-        <div style={{ position: 'fixed', top: 16, right: 16, zIndex: 9999, display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {toasts.map(t => (
-            <div key={t.id} onClick={() => { if (t.url) window.open(t.url, '_blank'); }} style={{ cursor: t.url ? 'pointer' : 'default', minWidth: 260, maxWidth: 360, background: 'white', padding: 12, boxShadow: '0 4px 14px rgba(0,0,0,0.12)', borderRadius: 8 }}>
-              <div style={{ fontWeight: 600, marginBottom: 6 }}>{t.title}</div>
-              <div style={{ fontSize: 13, color: '#333' }}>{t.body}</div>
-            </div>
-          ))}
-        </div>
+        <Toaster />
       </ApolloProvider>
     </ErrorBoundary>
   );

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import Map, { Marker, NavigationControl, GeolocateControl, Source, Layer } from 'react-map-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
+import LocationPrompt from './LocationPrompt';
 
 export default function DeliverMiMap(props) {
     if (typeof window === "undefined") {
@@ -15,6 +16,7 @@ export default function DeliverMiMap(props) {
 
     const [error, setError] = useState(null);
     const [permissionState, setPermissionState] = useState(null);
+    const [showLocationPrompt, setShowLocationPrompt] = useState(false);
     const mapRef = useRef(null);
     const mapboxToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
 
@@ -89,14 +91,32 @@ export default function DeliverMiMap(props) {
                 setPermissionState(result.state);
                 permissionHandle = result;
                 result.onchange = () => setPermissionState(result.state);
+
+                // Show modal prompt if permission is not granted
+                if (result.state !== 'granted') {
+                    setShowLocationPrompt(true);
+                }
             }).catch(() => {
-                setPermissionState(null);
+                // Permissions API not supported, fallback to showing prompt
+                setPermissionState('prompt');
+                setShowLocationPrompt(true);
             });
+        } else {
+            // Permissions API not available (e.g., iOS Safari < 16)
+            setPermissionState('prompt');
+            setShowLocationPrompt(true);
         }
         return () => {
             if (permissionHandle) permissionHandle.onchange = null;
         };
     }, []);
+
+    // Hide prompt when permission is granted
+    useEffect(() => {
+        if (permissionState === 'granted') {
+            setShowLocationPrompt(false);
+        }
+    }, [permissionState]);
 
     // Fit bounds when both pickup and dropoff are set
     useEffect(() => {
@@ -145,25 +165,13 @@ export default function DeliverMiMap(props) {
                 touchZoomRotate
                 doubleClickZoom={false}
             >
-                {/* Quick CTA to request permission when it is denied or not yet granted */}
-                {(permissionState === 'denied' || permissionState === 'prompt') && (
-                    <div className="absolute top-3 left-3 z-50">
-                        <button
-                            type="button"
-                            onClick={requestLocation}
-                            className="bg-white text-gray-900 border border-gray-200 shadow-md px-3 py-2 rounded text-xs font-semibold"
-                        >
-                            Enable location access
-                        </button>
-                    </div>
-                )}
 
                 {/* Navigation controls - hidden on mobile */}
                 <div className="hidden md:block">
                     <NavigationControl position="bottom-right" showCompass={false} />
                 </div>
-                
-                <GeolocateControl 
+
+                <GeolocateControl
                     position="top-right"
                     trackUserLocation
                     showAccuracyCircle={false}
@@ -237,33 +245,33 @@ export default function DeliverMiMap(props) {
 
                 {/* Rider location marker with pulsing animation and direction */}
                 {riderLocation && (
-                    <Marker 
-                        latitude={riderLocation.lat} 
-                        longitude={riderLocation.lng} 
+                    <Marker
+                        latitude={riderLocation.lat}
+                        longitude={riderLocation.lng}
                         anchor="center"
                     >
                         <div className="relative flex flex-col items-center">
                             {/* Pulsing circle */}
                             <div className="absolute inset-0 bg-blue-500 rounded-full animate-pulse opacity-50"></div>
-                            
+
                             {/* Rider icon with direction arrow */}
-                            <div 
+                            <div
                                 className="relative w-12 h-12 bg-gradient-to-br from-blue-400 to-blue-600 rounded-full border-4 border-white shadow-xl flex items-center justify-center transition-transform"
                                 style={{
-                                  transform: riderLocation.heading ? `rotate(${riderLocation.heading}deg)` : 'rotate(0deg)'
+                                    transform: riderLocation.heading ? `rotate(${riderLocation.heading}deg)` : 'rotate(0deg)'
                                 }}
                             >
                                 {/* Bike/scooter icon */}
                                 <svg className="w-7 h-7 text-white" fill="currentColor" viewBox="0 0 24 24">
                                     <path d="M18.5 9.5C19.88 9.5 21 8.38 21 7s-1.12-2.5-2.5-2.5S16 5.62 16 7s1.12 2.5 2.5 2.5zm-13 0C7.88 9.5 9 8.38 9 7s-1.12-2.5-2.5-2.5S4 5.62 4 7s1.12 2.5 2.5 2.5zm6.5-8c1.66 0 3-1.34 3-3S13.66 0 12 0s-3 1.34-3 3 1.34 3 3 3z" />
                                 </svg>
-                                
+
                                 {/* Direction arrow */}
                                 <div className="absolute -top-3 left-1/2 transform -translate-x-1/2">
                                     <div className="w-0 h-0 border-l-2 border-r-2 border-b-4 border-l-transparent border-r-transparent border-b-white"></div>
                                 </div>
                             </div>
-                            
+
                             {/* Status label */}
                             <div className="absolute -bottom-6 bg-blue-600 text-white text-xs px-2 py-1 rounded-full font-semibold whitespace-nowrap shadow-md">
                                 🚗 En Route
@@ -292,6 +300,23 @@ export default function DeliverMiMap(props) {
                     );
                 })}
             </Map>
+
+            {/* Location Permission Prompt Modal */}
+            {showLocationPrompt && (
+                <LocationPrompt
+                    permissionState={permissionState}
+                    onRequestLocation={() => {
+                        requestLocation();
+                        // Close prompt after requesting (it will reopen if denied)
+                        setTimeout(() => {
+                            if (permissionState === 'granted') {
+                                setShowLocationPrompt(false);
+                            }
+                        }, 1000);
+                    }}
+                    error={error}
+                />
+            )}
 
             {/* Error overlay */}
             {error && (
@@ -324,7 +349,7 @@ export default function DeliverMiMap(props) {
                             <p className="text-xs text-gray-500">Live Location</p>
                         </div>
                     </div>
-                    
+
                     <div className="bg-blue-50 rounded p-2 mb-2">
                         <p className="text-xs text-gray-600 mb-1">Status:</p>
                         <p className="text-sm font-semibold text-blue-900">
