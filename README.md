@@ -5,13 +5,16 @@ Consumer ride booking application for the Food Delivery & Ride Booking ecosystem
 ## Features
 
 ### ✅ Completed Features
-- **Interactive Map**: Mapbox GL integration with full map controls
+- **Interactive Map**: Mapbox GL integration with full map controls and bottom-sheet-aware centering
+- **Location Permissions**: Platform-specific permission prompts for iOS/Android with clear instructions
 - **Ride Booking**: Request rides with pickup and dropoff location selection
 - **Address Search**: Geocoding and autocomplete for address search
 - **Route Visualization**: Real-time route display between pickup and dropoff
 - **Fare Calculation**: Automatic fare calculation based on distance and duration
 - **Real-time Tracking**: Live rider location updates via Firestore
 - **Status Updates**: Real-time ride status synchronization
+- **Chat System**: In-ride messaging with riders
+- **Chat Notifications**: Toast notifications with message preview, sound alerts, and persistent unread badges
 - **Authentication**: Email/password and Google sign-in
 - **Error Handling**: Comprehensive error handling and user feedback
 
