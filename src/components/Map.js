@@ -120,10 +120,13 @@ export default function DeliverMiMap(props) {
         };
     }, []);
 
-    // Hide prompt when permission is granted
+    // Hide prompt when permission is granted, show when denied
     useEffect(() => {
         if (permissionState === 'granted') {
             setShowLocationPrompt(false);
+        } else if (permissionState === 'denied') {
+            // Reopen modal with instructions if user denied
+            setShowLocationPrompt(true);
         }
     }, [permissionState]);
 
@@ -327,13 +330,12 @@ export default function DeliverMiMap(props) {
                 <LocationPrompt
                     permissionState={permissionState}
                     onRequestLocation={() => {
-                        requestLocation();
-                        // Close prompt after requesting (it will reopen if denied)
+                        // Close modal FIRST so it doesn't block the browser prompt
+                        setShowLocationPrompt(false);
+                        // Then request location
                         setTimeout(() => {
-                            if (permissionState === 'granted') {
-                                setShowLocationPrompt(false);
-                            }
-                        }, 1000);
+                            requestLocation();
+                        }, 100);
                     }}
                     error={error}
                 />
