@@ -159,7 +159,7 @@ export default function RidesPage() {
                     </div>
 
                     <div className="flex justify-between items-center mt-4 pt-4 border-t border-gray-100">
-                      <span className="text-lg font-bold">${parseFloat(ride.fare).toFixed(2)}</span>
+                      <span className="text-lg font-bold">₦{parseFloat(ride.fare).toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
 
                       {ride.status === 'COMPLETED' && !ride.rating && (
                         <button

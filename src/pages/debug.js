@@ -187,7 +187,7 @@ export default function DebugPage() {
                     <div><strong>Status:</strong> {ride.status}</div>
                     <div><strong>From:</strong> {ride.pickupAddress}</div>
                     <div><strong>To:</strong> {ride.dropoffAddress}</div>
-                    <div><strong>Fare:</strong> ${ride.fare}</div>
+                    <div><strong>Fare:</strong> ₦{parseFloat(ride.fare).toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
                   </div>
                 ))}
               </div>

@@ -79,7 +79,7 @@ export default function RideDetailPage() {
 
   const handleCancel = async () => {
     if (!confirm('Are you sure you want to cancel this ride?')) return;
-    
+
     try {
       await cancelRide({
         variables: { rideId: id, reason: 'Cancelled by user' }
@@ -176,7 +176,7 @@ export default function RideDetailPage() {
       </div>
 
       {/* Back button */}
-      <Link 
+      <Link
         href="/"
         className="absolute top-4 left-4 z-20 bg-white rounded-full p-3 shadow-lg hover:bg-gray-50"
       >
@@ -227,7 +227,7 @@ export default function RideDetailPage() {
                   </div>
                 </div>
                 {ride.rider.phoneNumber && (
-                  <a 
+                  <a
                     href={`tel:${ride.rider.phoneNumber}`}
                     className="bg-green-500 text-white p-3 rounded-full hover:bg-green-600"
                   >
@@ -266,7 +266,7 @@ export default function RideDetailPage() {
           {/* Fare */}
           <div className="flex justify-between items-center p-4 bg-gray-50 rounded-xl mb-4">
             <span className="text-gray-600">Fare</span>
-            <span className="text-xl font-bold">${parseFloat(ride.fare).toFixed(2)}</span>
+            <span className="text-xl font-bold">₦{parseFloat(ride.fare).toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
           </div>
 
           {/* Actions */}
@@ -307,15 +307,14 @@ export default function RideDetailPage() {
         <div className="fixed inset-0 bg-black/50 z-[100] flex items-end sm:items-center justify-center">
           <div className="bg-white w-full sm:max-w-md sm:rounded-2xl rounded-t-2xl p-6">
             <h2 className="text-xl font-bold mb-4 text-center">How was your ride?</h2>
-            
+
             <div className="flex justify-center gap-2 mb-6">
               {[1, 2, 3, 4, 5].map((star) => (
                 <button
                   key={star}
                   onClick={() => setRating(star)}
-                  className={`text-4xl transition-transform ${
-                    star <= rating ? 'text-yellow-400' : 'text-gray-300'
-                  } hover:scale-110`}
+                  className={`text-4xl transition-transform ${star <= rating ? 'text-yellow-400' : 'text-gray-300'
+                    } hover:scale-110`}
                 >
                   ★
                 </button>

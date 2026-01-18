@@ -25,9 +25,9 @@ export default function PromotionsPage() {
     {
       id: 1,
       title: 'First Ride Free',
-      description: 'Get your first ride up to $15 free!',
+      description: 'Get your first ride up to ₦1,500 free!',
       code: 'FIRSTRIDE',
-      discount: '$15 off',
+      discount: '₦1,500 off',
       expiry: 'Valid for new users',
       active: true,
     },
@@ -43,9 +43,9 @@ export default function PromotionsPage() {
     {
       id: 3,
       title: 'Refer a Friend',
-      description: 'Get $10 credit for each friend who joins',
+      description: 'Get ₦1,000 credit for each friend who joins',
       code: 'REFER10',
-      discount: '$10 credit',
+      discount: '₦1,000 credit',
       expiry: 'No expiry',
       active: true,
     },
@@ -107,7 +107,7 @@ export default function PromotionsPage() {
         {/* Add Promo Code Section */}
         <section className="bg-white rounded-2xl p-6 shadow-sm mb-6">
           <h2 className="text-lg font-semibold mb-4">Have a promo code?</h2>
-          
+
           <div className="flex gap-3">
             <input
               type="text"
@@ -125,9 +125,8 @@ export default function PromotionsPage() {
           </div>
 
           {message && (
-            <div className={`mt-4 p-3 rounded-xl ${
-              message.type === 'success' ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800'
-            }`}>
+            <div className={`mt-4 p-3 rounded-xl ${message.type === 'success' ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800'
+              }`}>
               {message.text}
             </div>
           )}
@@ -136,10 +135,10 @@ export default function PromotionsPage() {
         {/* Available Promotions */}
         <section>
           <h2 className="text-lg font-semibold mb-4">Available Promotions</h2>
-          
+
           <div className="space-y-4">
             {promotions.map((promo) => (
-              <div 
+              <div
                 key={promo.id}
                 className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 overflow-hidden"
               >
@@ -152,7 +151,7 @@ export default function PromotionsPage() {
                     {promo.discount}
                   </span>
                 </div>
-                
+
                 <div className="flex items-center justify-between bg-gray-50 rounded-xl p-3">
                   <div>
                     <p className="text-xs text-gray-500">Promo Code</p>
@@ -177,9 +176,9 @@ export default function PromotionsPage() {
 
         {/* Referral Section */}
         <section className="mt-8 bg-gradient-to-r from-purple-500 to-blue-500 rounded-2xl p-6 text-white">
-          <h2 className="text-xl font-bold mb-2">Invite Friends, Get $10</h2>
+          <h2 className="text-xl font-bold mb-2">Invite Friends, Get ₦1,000</h2>
           <p className="text-white/80 mb-4">
-            Share your referral code and get $10 credit for each friend who takes their first ride.
+            Share your referral code and get ₦1,000 credit for each friend who takes their first ride.
           </p>
           <div className="bg-white/20 rounded-xl p-4 mb-4">
             <p className="text-xs text-white/70 mb-1">Your referral code</p>
@@ -189,8 +188,8 @@ export default function PromotionsPage() {
             onClick={() => {
               const code = generateReferralCode(user.displayName || user.email);
               navigator.share?.({
-                title: 'Get $10 off your first DeliverMi ride!',
-                text: `Use my code ${code} to get $10 off your first ride on DeliverMi!`,
+                title: 'Get ₦1,000 off your first DeliverMi ride!',
+                text: `Use my code ${code} to get ₦1,000 off your first ride on DeliverMi!`,
                 url: 'https://delivermi.app',
               }).catch(() => {
                 navigator.clipboard?.writeText(code);

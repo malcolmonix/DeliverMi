@@ -157,13 +157,13 @@ export default function OrderPage() {
                   <div style={{ fontSize: '0.8rem', color: '#dc2626', marginTop: 4 }}>Note: {item.specialInstructions}</div>
                 )}
               </div>
-              <div style={{ fontWeight: 600 }}>${(item.total || item.price * item.quantity).toFixed(2)}</div>
+              <div style={{ fontWeight: 600 }}>₦{(item.total || item.price * item.quantity).toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
             </div>
           </div>
         ))}
         <div style={{ marginTop: 12, paddingTop: 12, borderTop: '2px solid #e5e7eb', display: 'flex', justifyContent: 'space-between', fontWeight: 700 }}>
           <span>Total</span>
-          <span>${order.paidAmount.toFixed(2)}</span>
+          <span>₦{order.paidAmount.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
         </div>
         <div style={{ fontSize: '0.85rem', color: '#6b7280', marginTop: 4 }}>Payment: {order.paymentMethod}</div>
       </div>

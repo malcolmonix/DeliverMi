@@ -125,7 +125,7 @@ export default function Dashboard() {
                     </div>
                     <div className={styles.detailRow}>
                       <span className={styles.detailIcon}>💵</span>
-                      <span>${(order.paidAmount || 0).toFixed(2)}</span>
+                      <span>₦{(order.paidAmount || 0).toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                     </div>
                   </div>
 
@@ -194,7 +194,7 @@ export default function Dashboard() {
                     </div>
                     <div className={styles.detailRow}>
                       <span className={styles.detailIcon}>💵</span>
-                      <span>${(order.paidAmount || 0).toFixed(2)}</span>
+                      <span>₦{(order.paidAmount || 0).toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                     </div>
                   </div>
 
