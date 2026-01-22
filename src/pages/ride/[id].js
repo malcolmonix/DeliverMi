@@ -6,7 +6,7 @@ import { onAuthStateChanged } from 'firebase/auth';
 import { useQuery, useMutation } from '@apollo/client';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { auth, db } from '../../lib/firebase';
-import { GET_RIDE_STATUS, CANCEL_RIDE, RATE_RIDE } from '../../lib/graphql-operations';
+import { GET_RIDE_STATUS, CANCEL_RIDE, RATE_RIDE, ADJUST_RIDE_PRICE, ACCEPT_RIDER_OFFER } from '../../lib/graphql-operations';
 
 // Dynamic import for Map to avoid SSR issues
 const DeliverMiMap = dynamic(() => import('../../components/Map'), { ssr: false });
@@ -40,6 +40,8 @@ export default function RideDetailPage() {
 
   const [cancelRide, { loading: cancelling }] = useMutation(CANCEL_RIDE);
   const [rateRide, { loading: submittingRating }] = useMutation(RATE_RIDE);
+  const [adjustPrice, { loading: adjustingPrice }] = useMutation(ADJUST_RIDE_PRICE);
+  const [acceptOffer, { loading: acceptingOffer }] = useMutation(ACCEPT_RIDER_OFFER);
 
   // Real-time rider location tracking
   useEffect(() => {
@@ -101,6 +103,29 @@ export default function RideDetailPage() {
     } catch (err) {
       console.error('Error rating ride:', err);
       alert('Failed to submit rating. Please try again.');
+    }
+  };
+
+  const handleAdjustPrice = async (increment) => {
+    try {
+      const newAmount = ride.fare + increment;
+      await adjustPrice({
+        variables: { rideId: id, amount: newAmount }
+      });
+    } catch (err) {
+      console.error('Error adjusting price:', err);
+      alert('Failed to update price.');
+    }
+  };
+
+  const handleAcceptOffer = async (riderId, amount) => {
+    try {
+      await acceptOffer({
+        variables: { rideId: id, riderId, amount }
+      });
+    } catch (err) {
+      console.error('Error accepting offer:', err);
+      alert('Failed to accept offer.');
     }
   };
 
@@ -213,29 +238,72 @@ export default function RideDetailPage() {
 
           {/* Driver Info */}
           {ride.rider && (
-            <div className="bg-gray-50 rounded-xl p-4 mb-4">
+            <div className="bg-gray-50 rounded-xl p-4 mb-4 border border-blue-100">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 bg-blue-500 rounded-full flex items-center justify-center">
-                    <span className="text-white text-xl">
-                      {ride.rider.displayName?.charAt(0) || '?'}
-                    </span>
+                  <div className="w-14 h-14 bg-blue-500 rounded-full flex items-center justify-center overflow-hidden border-2 border-white shadow-sm">
+                    {ride.rider.photoURL ? (
+                      <img src={ride.rider.photoURL} alt="Rider" className="w-full h-full object-cover" />
+                    ) : (
+                      <span className="text-white text-2xl">
+                        {ride.rider.displayName?.charAt(0) || '?'}
+                      </span>
+                    )}
                   </div>
                   <div>
-                    <p className="font-semibold">{ride.rider.displayName || 'Your Driver'}</p>
-                    <p className="text-sm text-gray-500">Driver</p>
+                    <p className="font-bold text-gray-900">{ride.rider.displayName || 'Your Driver'}</p>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <span className="text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full font-medium">
+                        {ride.rider.vehicleType || 'Rider'}
+                      </span>
+                      {ride.rider.licensePlate && (
+                        <span className="text-[10px] text-gray-500 font-mono tracking-wider">
+                          {ride.rider.licensePlate}
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
-                {ride.rider.phoneNumber && (
+                {(ride.rider.secondaryPhone || ride.rider.phoneNumber) && (
                   <a
-                    href={`tel:${ride.rider.phoneNumber}`}
-                    className="bg-green-500 text-white p-3 rounded-full hover:bg-green-600"
+                    href={`tel:${ride.rider.secondaryPhone || ride.rider.phoneNumber}`}
+                    className="bg-green-500 text-white p-3 rounded-full hover:bg-green-600 shadow-md active:scale-95 transition-transform"
+                    title="Call Rider"
                   >
-                    <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                    <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
                       <path d="M2 3a1 1 0 011-1h2.153a1 1 0 01.986.836l.74 4.435a1 1 0 01-.54 1.06l-1.548.773a11.037 11.037 0 006.105 6.105l.774-1.548a1 1 0 011.059-.54l4.435.74a1 1 0 01.836.986V17a1 1 0 01-1 1h-2C7.82 18 2 12.18 2 5V3z" />
                     </svg>
                   </a>
                 )}
+              </div>
+            </div>
+          )}
+
+          {/* Pending Offers (when status is REQUESTED) */}
+          {ride.status === 'REQUESTED' && ride.offers && ride.offers.some(o => o.status === 'PENDING') && (
+            <div className="mb-4">
+              <h3 className="text-sm font-semibold text-gray-500 mb-2 px-1">Rider Offers</h3>
+              <div className="space-y-2">
+                {ride.offers.filter(o => o.status === 'PENDING').map(offer => (
+                  <div key={offer.id} className="flex items-center justify-between p-3 bg-white border border-yellow-200 rounded-xl shadow-sm">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 bg-gray-200 rounded-full flex items-center justify-center overflow-hidden text-sm">
+                        {offer.riderPhoto ? <img src={offer.riderPhoto} alt="" className="w-full h-full object-cover" /> : offer.riderName?.charAt(0)}
+                      </div>
+                      <div>
+                        <p className="text-sm font-bold">{offer.riderName}</p>
+                        <p className="text-lg font-black text-black">₦{offer.amount.toLocaleString()}</p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => handleAcceptOffer(offer.riderId, offer.amount)}
+                      disabled={acceptingOffer}
+                      className="bg-black text-white px-5 py-2 rounded-lg font-bold text-sm hover:bg-gray-800 disabled:opacity-50"
+                    >
+                      Accept
+                    </button>
+                  </div>
+                ))}
               </div>
             </div>
           )}
@@ -263,10 +331,40 @@ export default function RideDetailPage() {
             </div>
           </div>
 
-          {/* Fare */}
-          <div className="flex justify-between items-center p-4 bg-gray-50 rounded-xl mb-4">
-            <span className="text-gray-600">Fare</span>
-            <span className="text-xl font-bold">₦{parseFloat(ride.fare).toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+          {/* Fare & Price Adjustment */}
+          <div className="p-4 bg-gray-50 rounded-xl mb-4 border border-gray-100 shadow-inner">
+            <div className="flex justify-between items-center mb-3">
+              <span className="text-gray-500 text-sm">Offer Price</span>
+              <span className="text-2xl font-black text-black">
+                ₦{parseFloat(ride.fare).toLocaleString('en-NG', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+              </span>
+            </div>
+
+            {ride.status === 'REQUESTED' && (
+              <div className="flex gap-2 mt-2">
+                <button
+                  onClick={() => handleAdjustPrice(50)}
+                  disabled={adjustingPrice}
+                  className="flex-1 py-2 bg-white border border-gray-200 rounded-lg text-sm font-bold shadow-sm hover:border-black active:scale-95 transition-all text-gray-700"
+                >
+                  + ₦50
+                </button>
+                <button
+                  onClick={() => handleAdjustPrice(150)}
+                  disabled={adjustingPrice}
+                  className="flex-1 py-2 bg-white border border-gray-200 rounded-lg text-sm font-bold shadow-sm hover:border-black active:scale-95 transition-all text-gray-700"
+                >
+                  + ₦150
+                </button>
+                <button
+                  onClick={() => handleAdjustPrice(300)}
+                  disabled={adjustingPrice}
+                  className="flex-1 py-2 bg-white border border-gray-200 rounded-lg text-sm font-bold shadow-sm hover:border-black active:scale-95 transition-all text-gray-700"
+                >
+                  + ₦300
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Actions */}

@@ -23,7 +23,7 @@ const SEND_MESSAGE = gql`
   }
 `;
 
-export default function ChatModal({ rideId, currentUserId, otherUserName, onClose }) {
+export default function ChatModal({ rideId, currentUserId, otherUserName, otherUserPhone, onClose }) {
     const [newMessage, setNewMessage] = useState('');
     const messagesEndRef = useRef(null);
 
@@ -83,12 +83,23 @@ export default function ChatModal({ rideId, currentUserId, otherUserName, onClos
                             </p>
                         </div>
                     </div>
-                    <button
-                        onClick={onClose}
-                        className="p-2 hover:bg-gray-100 rounded-full transition-colors"
-                    >
-                        ✕
-                    </button>
+                    <div className="flex items-center gap-2">
+                        {otherUserPhone && (
+                            <a
+                                href={`tel:${otherUserPhone}`}
+                                className="p-2 bg-green-50 text-green-600 rounded-full hover:bg-green-100 transition-colors"
+                                title="Call"
+                            >
+                                📞
+                            </a>
+                        )}
+                        <button
+                            onClick={onClose}
+                            className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+                        >
+                            ✕
+                        </button>
+                    </div>
                 </div>
 
                 {/* Messages */}

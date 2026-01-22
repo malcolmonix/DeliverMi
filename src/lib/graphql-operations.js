@@ -22,6 +22,18 @@ export const GET_RIDE_STATUS = gql`
         latitude
         longitude
         phoneNumber
+        secondaryPhone
+        vehicleType
+        licensePlate
+      }
+      offers {
+        id
+        riderId
+        riderName
+        riderPhoto
+        amount
+        status
+        createdAt
       }
       createdAt
       updatedAt
@@ -184,6 +196,46 @@ export const ACCEPT_RIDE = gql`
       rider {
         id
         displayName
+      }
+    }
+  }
+`;
+// Chat Mutations
+export const SEND_MESSAGE = gql`
+  mutation SendMessage($rideId: ID!, $text: String!) {
+    sendMessage(rideId: $rideId, text: $text) {
+      id
+      rideId
+      senderId
+      text
+      createdAt
+    }
+  }
+`;
+
+// Bidding Mutations
+export const ADJUST_RIDE_PRICE = gql`
+  mutation AdjustRidePrice($rideId: ID!, $amount: Float!) {
+    adjustRidePrice(rideId: $rideId, amount: $amount) {
+      id
+      fare
+      status
+    }
+  }
+`;
+
+export const ACCEPT_RIDER_OFFER = gql`
+  mutation AcceptRiderOffer($rideId: ID!, $riderId: String!, $amount: Float!) {
+    acceptRiderOffer(rideId: $rideId, riderId: $riderId, amount: $amount) {
+      id
+      riderId
+      fare
+      status
+      rider {
+        id
+        displayName
+        phoneNumber
+        secondaryPhone
       }
     }
   }

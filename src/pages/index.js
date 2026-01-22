@@ -9,7 +9,7 @@ import AddressSearch from '../components/AddressSearch';
 import ActiveRideView from '../components/ActiveRideView';
 import CustomerDeliveryConfirmation from '../components/CustomerDeliveryConfirmation';
 import RatingModal from '../components/RatingModal';
-import { REQUEST_RIDE, GET_RIDE_STATUS, CANCEL_RIDE, GET_MY_RIDES, SET_DELIVERY_CODE, RATE_RIDE } from '../lib/graphql-operations';
+import { REQUEST_RIDE, GET_RIDE_STATUS, CANCEL_RIDE, GET_MY_RIDES, SET_DELIVERY_CODE, RATE_RIDE, ACCEPT_RIDER_OFFER, ADJUST_RIDE_PRICE } from '../lib/graphql-operations';
 import { reverseGeocode, getRoute, calculateFare } from '../lib/mapbox';
 import { db, auth } from '../lib/firebase';
 import { requestNotificationPermission, onMessageListener, showNotification } from '../lib/notifications';
@@ -46,6 +46,8 @@ export default function Home() {
   const [riderToRate, setRiderToRate] = useState(null);
   const [rideMissingCount, setRideMissingCount] = useState(0); // Avoid clearing on transient errors
   const [rideValidated, setRideValidated] = useState(false); // Track if ride has been validated from server
+  const [priceConfirmed, setPriceConfirmed] = useState(false); // Track if user has confirmed the price
+  const [confirmedFare, setConfirmedFare] = useState(null); // The fare user confirmed/adjusted
   const fareCalculated = useRef(false);
 
   const [requestRide, { loading: requesting }] = useMutation(REQUEST_RIDE);
@@ -434,6 +436,8 @@ export default function Home() {
       console.log('💰 Active ride ID:', activeRideId);
       fareCalculated.current = false; // Reset flag at start of calculation
       setFare(null); // Clear old fare
+      setPriceConfirmed(false); // Reset price confirmation when fare is recalculated
+      setConfirmedFare(null); // Reset confirmed fare
 
       // Set a timeout to fallback to default fare if route takes too long
       const timeout = setTimeout(() => {
@@ -566,6 +570,8 @@ export default function Home() {
     setFare(null);
     setRiderLocation(null);
     setMode('pickup');
+    setPriceConfirmed(false);
+    setConfirmedFare(null);
     setBottomSheetOpen(true);
     setPreviousRideStatus(null);
     setShowRatingModal(false);
@@ -574,9 +580,28 @@ export default function Home() {
     fareCalculated.current = false;
   };
 
+  // Handle price confirmation - user adjusts and confirms the fare
+  const handleConfirmPrice = () => {
+    if (!fare) {
+      setError('Please wait for fare calculation');
+      return;
+    }
+    setConfirmedFare(parseFloat(fare));
+    setPriceConfirmed(true);
+    setError(null);
+  };
+
+  // Reset price confirmation when fare changes (new calculation)
+  useEffect(() => {
+    if (fare) {
+      setPriceConfirmed(false);
+      setConfirmedFare(null);
+    }
+  }, [fare]);
+
   const handleRequestRide = async () => {
     console.log('🚀 handleRequestRide called - BUTTON CLICKED!');
-    console.log('pickup:', pickup, 'dropoff:', dropoff, 'fare:', fare);
+    console.log('pickup:', pickup, 'dropoff:', dropoff, 'fare:', fare, 'confirmedFare:', confirmedFare);
 
     // Prevent booking if user already has an active ride
     if (activeRideId) {
@@ -598,6 +623,12 @@ export default function Home() {
       return;
     }
 
+    if (!priceConfirmed || !confirmedFare) {
+      console.log('❌ Price not confirmed');
+      setError('Please confirm the ride price first');
+      return;
+    }
+
     setError(null);
     console.log('✅ All checks passed. Attempting to request ride...');
 
@@ -612,7 +643,7 @@ export default function Home() {
             dropoffAddress: dropoffAddress || `${dropoff.lat.toFixed(4)}, ${dropoff.lng.toFixed(4)}`,
             dropoffLat: dropoff.lat,
             dropoffLng: dropoff.lng,
-            fare: fare ? parseFloat(fare) : 5000.00,
+            fare: confirmedFare,
             distance: route ? parseFloat(route.distanceKm) : 1.0,
             duration: route ? route.durationMin : 10,
             paymentMethod: 'CASH',
@@ -631,6 +662,8 @@ export default function Home() {
         setLocalRideData(rideData);
         setRideValidated(true);
         setRideMissingCount(0);
+        setPriceConfirmed(false); // Reset price confirmation
+        setConfirmedFare(null); // Reset confirmed fare
         localStorage.setItem('activeRideId', rideData.id);
 
         startPolling(5000);
@@ -669,6 +702,8 @@ export default function Home() {
     setFare(null);
     setRiderLocation(null);
     setMode('pickup');
+    setPriceConfirmed(false);
+    setConfirmedFare(null);
     stopPolling();
     setBottomSheetOpen(true);
   };
@@ -688,6 +723,8 @@ export default function Home() {
     setFare(null);
     setRiderLocation(null);
     setMode('pickup');
+    setPriceConfirmed(false);
+    setConfirmedFare(null);
     stopPolling();
     setBottomSheetOpen(true);
     showNotification('🧹 Cleared', 'Active ride has been cleared. You can now book a new ride.');
@@ -856,6 +893,13 @@ export default function Home() {
               showRating={!showRatingModal && riderToRate !== null}
               onRateRider={() => setShowRatingModal(true)}
               user={user}
+              onRideUpdated={(updatedRide) => {
+                setLocalRideData(updatedRide);
+                if (updatedRide.status === 'ACCEPTED') {
+                  // Ride was accepted, refetch to get full rider details
+                  refetch();
+                }
+              }}
             />
           ) : activeRideId && !ride ? (
             // Active ride ID exists but no ride data - likely stuck
@@ -996,6 +1040,83 @@ export default function Home() {
                   </div>
                 )}
 
+                {/* Price Confirmation Section */}
+                {fare && !priceConfirmed && (
+                  <div className="bg-green-50 border-2 border-green-200 rounded-2xl p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h3 className="font-bold text-gray-800 flex items-center gap-2">
+                        <span className="text-xl">💰</span>
+                        Confirm Ride Price
+                      </h3>
+                    </div>
+                    
+                    <div className="relative">
+                      <span className="absolute left-4 top-1/2 -translate-y-1/2 font-bold text-gray-500">₦</span>
+                      <input
+                        type="number"
+                        value={confirmedFare || fare}
+                        onChange={(e) => setConfirmedFare(parseFloat(e.target.value) || parseFloat(fare))}
+                        className="w-full pl-10 pr-4 py-3 bg-white border-2 border-green-300 rounded-xl focus:outline-none focus:border-green-500 font-bold text-lg"
+                        min="0"
+                        step="0.01"
+                      />
+                    </div>
+
+                    {/* +/- 500 increment buttons */}
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => {
+                          const current = confirmedFare || parseFloat(fare) || 0;
+                          setConfirmedFare(Math.max(0, current - 500));
+                        }}
+                        className="flex-1 bg-red-100 text-red-700 py-2.5 rounded-lg font-bold border-2 border-red-300 hover:bg-red-200 active:scale-95 transition-all"
+                      >
+                        -₦500
+                      </button>
+                      <button
+                        onClick={() => {
+                          const current = confirmedFare || parseFloat(fare) || 0;
+                          setConfirmedFare(current + 500);
+                        }}
+                        className="flex-1 bg-green-100 text-green-700 py-2.5 rounded-lg font-bold border-2 border-green-300 hover:bg-green-200 active:scale-95 transition-all"
+                      >
+                        +₦500
+                      </button>
+                    </div>
+
+                    <button
+                      onClick={handleConfirmPrice}
+                      disabled={!confirmedFare && !fare}
+                      className="w-full bg-green-500 text-white py-3 rounded-xl font-semibold hover:bg-green-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-md"
+                    >
+                      Confirm Price: ₦{(confirmedFare || parseFloat(fare) || 0).toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </button>
+                  </div>
+                )}
+
+                {/* Show confirmed price */}
+                {priceConfirmed && confirmedFare && (
+                  <div className="p-4 bg-green-100 border-2 border-green-300 rounded-xl">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm text-gray-600">Confirmed Price</p>
+                        <p className="text-2xl font-bold text-green-700">
+                          ₦{confirmedFare.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => {
+                          setPriceConfirmed(false);
+                          setConfirmedFare(null);
+                        }}
+                        className="text-sm text-blue-600 hover:text-blue-800 font-medium"
+                      >
+                        Change
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 {error && (
                   <div className="p-3 bg-red-50 border border-red-200 rounded-xl">
                     <p className="text-sm text-red-800">{error}</p>
@@ -1009,17 +1130,19 @@ export default function Home() {
                     console.log('🖱️ BUTTON CLICK EVENT FIRED!');
                     handleRequestRide();
                   }}
-                  disabled={!pickup || !dropoff || requesting || !fare}
+                  disabled={!pickup || !dropoff || requesting || !fare || !priceConfirmed || !confirmedFare}
                   className="w-full py-4 bg-black text-white rounded-xl font-bold text-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-800 transition-colors shadow-lg"
-                  title={!pickup ? 'Select pickup location' : !dropoff ? 'Select dropoff location' : !fare ? 'Calculating fare...' : 'Click to request'}
+                  title={!pickup ? 'Select pickup location' : !dropoff ? 'Select dropoff location' : !fare ? 'Calculating fare...' : !priceConfirmed ? 'Please confirm the price first' : 'Click to request'}
                 >
                   {requesting ? (
                     <span className="flex items-center justify-center gap-2">
                       <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
                       Requesting Dispatch...
                     </span>
+                  ) : priceConfirmed && confirmedFare ? (
+                    `Request Dispatch - ₦${confirmedFare.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
                   ) : fare ? (
-                    `Request Dispatch - ₦${parseFloat(fare).toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                    'Confirm Price First'
                   ) : (
                     'Calculating fare...'
                   )}
