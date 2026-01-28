@@ -6,7 +6,7 @@ import { useEffect, useState } from 'react';
 import { registerMessagingSW, requestAndGetFcmToken, onMessageHandler } from '../lib/firebase';
 import { auth, db } from '../lib/firebase';
 import { doc, setDoc } from 'firebase/firestore';
-import { ErrorBoundary } from '../components/ErrorBoundary';
+import ErrorBoundary from '../components/ErrorBoundary';
 import { Toaster, toast } from 'react-hot-toast';
 
 export default function App({ Component, pageProps }) {
