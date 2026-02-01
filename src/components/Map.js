@@ -47,8 +47,13 @@ export default function DeliverMiMap(props) {
             return;
         }
 
+        console.log('🌍 Requesting location permission...');
+        
+        // For Android, we need to explicitly request permission first
+        // This triggers the browser's permission prompt
         navigator.geolocation.getCurrentPosition(
             (position) => {
+                console.log('✅ Location permission granted:', position.coords);
                 setViewState(prev => ({
                     ...prev,
                     latitude: position.coords.latitude,
@@ -56,6 +61,8 @@ export default function DeliverMiMap(props) {
                     zoom: 14
                 }));
                 setError(null);
+                setPermissionState('granted');
+                setShowLocationPrompt(false);
 
                 // Center on user location with padding for bottom sheet
                 if (mapRef.current) {
@@ -67,13 +74,19 @@ export default function DeliverMiMap(props) {
                 }
             },
             (geoError) => {
-                console.error('Error getting location:', geoError);
+                console.error('❌ Error getting location:', geoError);
                 setError(formatGeoError(geoError));
+                
+                // Update permission state based on error
+                if (geoError.code === 1) {
+                    setPermissionState('denied');
+                    setShowLocationPrompt(true);
+                }
             },
             {
                 enableHighAccuracy: true,
-                timeout: 10000,
-                maximumAge: 10000
+                timeout: 15000, // Increased timeout for Android
+                maximumAge: 0 // Always get fresh location
             }
         );
     }, [formatGeoError]);
@@ -95,30 +108,42 @@ export default function DeliverMiMap(props) {
     // Track browser permission state so we can prompt the user clearly
     useEffect(() => {
         let permissionHandle;
+        
+        // Try to check permission state
         if (navigator.permissions && navigator.permissions.query) {
             navigator.permissions.query({ name: 'geolocation' }).then((result) => {
+                console.log('📍 Permission state:', result.state);
                 setPermissionState(result.state);
                 permissionHandle = result;
-                result.onchange = () => setPermissionState(result.state);
+                result.onchange = () => {
+                    console.log('📍 Permission state changed:', result.state);
+                    setPermissionState(result.state);
+                };
 
                 // Show modal prompt if permission is not granted
                 if (result.state !== 'granted') {
                     setShowLocationPrompt(true);
+                } else {
+                    // If already granted, request location immediately
+                    requestLocation();
                 }
-            }).catch(() => {
-                // Permissions API not supported, fallback to showing prompt
+            }).catch((err) => {
+                // Permissions API not supported (common on Android)
+                console.log('⚠️ Permissions API not supported, will request directly:', err);
                 setPermissionState('prompt');
                 setShowLocationPrompt(true);
             });
         } else {
-            // Permissions API not available (e.g., iOS Safari < 16)
+            // Permissions API not available (e.g., iOS Safari < 16, some Android browsers)
+            console.log('⚠️ Permissions API not available, will request directly');
             setPermissionState('prompt');
             setShowLocationPrompt(true);
         }
+        
         return () => {
             if (permissionHandle) permissionHandle.onchange = null;
         };
-    }, []);
+    }, [requestLocation]);
 
     // Hide prompt when permission is granted, show when denied
     useEffect(() => {

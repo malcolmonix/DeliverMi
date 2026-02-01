@@ -1,5 +1,5 @@
 import { initializeApp, getApps } from 'firebase/app';
-import { getAuth } from 'firebase/auth';
+import { getAuth, setPersistence, browserLocalPersistence } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 
 const firebaseConfig = {
@@ -11,20 +11,61 @@ const firebaseConfig = {
   appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
 };
 
+// Validate Firebase configuration
+const requiredConfig = ['apiKey', 'authDomain', 'projectId', 'appId'];
+const missingConfig = requiredConfig.filter(key => !firebaseConfig[key]);
+
+if (missingConfig.length > 0) {
+  console.error('❌ Missing Firebase configuration:', missingConfig);
+  console.error('Please check your .env.local file and ensure all required Firebase environment variables are set.');
+}
+
 let app;
 if (!getApps().length) {
-  app = initializeApp(firebaseConfig);
+  try {
+    app = initializeApp(firebaseConfig);
+    console.log('✅ Firebase initialized successfully');
+    console.log('Project ID:', firebaseConfig.projectId);
+    console.log('Auth Domain:', firebaseConfig.authDomain);
+  } catch (error) {
+    console.error('❌ Firebase initialization failed:', error);
+    throw error;
+  }
 } else {
   app = getApps()[0];
+  console.log('✅ Firebase app already initialized');
 }
 
 export const auth = getAuth(app);
 export const db = getFirestore(app);
 
+// Set authentication persistence to LOCAL (survives browser restarts)
+if (typeof window !== 'undefined') {
+  setPersistence(auth, browserLocalPersistence)
+    .then(() => {
+      console.log('✅ Firebase Auth persistence set to LOCAL');
+    })
+    .catch((error) => {
+      console.error('❌ Failed to set Firebase Auth persistence:', error);
+    });
+}
+
+// Add auth state change listener for debugging
+if (typeof window !== 'undefined') {
+  auth.onAuthStateChanged((user) => {
+    if (user) {
+      console.log('🔐 User signed in:', user.email, 'UID:', user.uid);
+    } else {
+      console.log('🔐 User signed out');
+    }
+  });
+}
+
 // Messaging helpers (dynamic imports so server-side doesn't break)
 export async function registerMessagingSW() {
   if (typeof window === 'undefined') return null;
   if (!('serviceWorker' in navigator)) return null;
+  
   try {
     // Add cache busting to force update of service worker
     const reg = await navigator.serviceWorker.register('/firebase-messaging-sw.js', {
@@ -46,6 +87,7 @@ export async function requestAndGetFcmToken() {
     console.warn('VAPID key not configured in environment variables');
     return null;
   }
+  
   try {
     // Check notification permission
     if (Notification.permission === 'denied') {
@@ -62,10 +104,8 @@ export async function requestAndGetFcmToken() {
       }
     }
     
-    const { getMessaging, getToken, onMessage } = await import('firebase/messaging');
+    const { getMessaging, getToken } = await import('firebase/messaging');
     const messaging = getMessaging(app);
-    
-    console.log('Requesting FCM token with VAPID key...');
     
     console.log('Requesting FCM token with VAPID key...');
     
@@ -74,8 +114,13 @@ export async function requestAndGetFcmToken() {
     
     const token = await getToken(messaging, { vapidKey: vapidKey });
     
-    console.log('✅ FCM token obtained:', token.substring(0, 20) + '...');
-    return token;
+    if (token) {
+      console.log('✅ FCM token obtained:', token.substring(0, 20) + '...');
+      return token;
+    } else {
+      console.warn('⚠️ No FCM token received');
+      return null;
+    }
   } catch (e) {
     console.error('❌ Failed to get FCM token:', e.message || e);
     if (e.code) console.error('Error code:', e.code);

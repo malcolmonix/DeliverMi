@@ -45,11 +45,11 @@ export default function LocationPrompt({ permissionState, onRequestLocation, err
             return {
                 title: 'Enable Location on Android',
                 steps: [
-                    'Open Chrome Settings (tap ⋮ menu)',
-                    'Tap Site Settings',
-                    'Tap Location',
-                    'Find this site and allow location',
-                    'Return to this page and refresh'
+                    'Tap the lock icon (🔒) or site info in the address bar',
+                    'Tap "Permissions" or "Site settings"',
+                    'Find "Location" and tap it',
+                    'Select "Allow" or "Allow only while using the app"',
+                    'Close settings and the page will reload automatically'
                 ]
             };
         } else {

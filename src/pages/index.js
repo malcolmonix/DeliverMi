@@ -338,15 +338,24 @@ export default function Home() {
   // Check authentication state
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      console.log('🔐 Auth state changed:', currentUser ? `User: ${currentUser.email}` : 'No user');
       setUser(currentUser);
       setLoadingAuth(false);
-      if (!currentUser) {
-        router.push('/login');
-      }
+      
+      // Only redirect if we're sure there's no user AND loading is complete
+      // Don't redirect immediately - let the loading state handle it
     });
 
     return () => unsubscribe();
   }, [router]);
+
+  // Handle redirect to login only when loading is complete and no user
+  useEffect(() => {
+    if (!loadingAuth && !user) {
+      console.log('🔐 No user and loading complete, redirecting to login');
+      router.push('/login');
+    }
+  }, [loadingAuth, user, router]);
 
   // Setup notifications
   useEffect(() => {
